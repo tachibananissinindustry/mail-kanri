@@ -686,7 +686,7 @@ async function summarize() {
   try {
     const prompt = `以下はビジネスメールです。要点・経緯・次に必要なアクションを日本語で3〜5文で簡潔に要約してください。\n返信の要否がわかるように記述してください。\n\n---\n${body}\n---`;
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cfg.gemini}`, {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${cfg.gemini}`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})

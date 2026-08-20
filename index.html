@@ -599,12 +599,13 @@ function renderTimeline() {
       body = '<div class="tl-change">メモを更新しました</div>';
     }
     return `
-    <div class="tl-item">
+    <div class="tl-item" id="tl-${h.id}">
       <div class="tl-dot">${icon}</div>
       <div class="tl-body">
-        <div class="tl-meta">
+        <div class="tl-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="tl-date">${dt}</span>
           ${h.created_by?`<span class="tl-who">${esc(h.created_by)}</span>`:''}
+          <button onclick="deleteHistory('${h.id}')" title="この履歴を削除" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:13px;padding:2px 6px;border-radius:4px;line-height:1;transition:color .15s;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">🗑</button>
         </div>
         ${body}
       </div>
@@ -615,6 +616,20 @@ function renderTimeline() {
 function closeDetail() {
   $id('overlay-detail').classList.remove('open');
   state.selectedCase = null;
+}
+
+/* ======================================================
+   履歴削除
+====================================================== */
+async function deleteHistory(historyId) {
+  if (!confirm('この履歴を削除しますか？\nこの操作は取り消せません。')) return;
+  try {
+    const {error} = await sb.from('histories').delete().eq('id', historyId);
+    if (error) throw error;
+    state.histories = state.histories.filter(h => h.id !== historyId);
+    renderTimeline();
+    toast('履歴を削除しました');
+  } catch(e) { toast('削除に失敗しました: ' + e.message, true); }
 }
 
 /* ======================================================

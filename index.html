@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>メール返信管理 | 日新インダストリー</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --primary:#1e40af;--primary-light:#dbeafe;
+  --surface:#fff;--bg:#f1f5f9;--border:#e2e8f0;
+  --text:#1e293b;--muted:#64748b;
+  --r:10px;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);
+  --shadow-md:0 4px 6px rgba(0,0,0,.07),0 2px 4px rgba(0,0,0,.06);
+  --shadow-lg:0 10px 15px rgba(0,0,0,.1),0 4px 6px rgba(0,0,0,.05);
+}
+body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;}
+
+/* ---- Screens ---- */
+.screen{display:none;min-height:100vh;}
+.screen.active{display:flex;}
+
+/* ---- Auth ---- */
+#screen-setup,#screen-login{
+  align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);
+}
+.auth-card{background:#fff;border-radius:16px;padding:40px;width:100%;max-width:480px;box-shadow:var(--shadow-lg);}
+.auth-logo{text-align:center;margin-bottom:28px;}
+.auth-logo h1{font-size:18px;font-weight:700;color:var(--primary);margin-top:8px;}
+.auth-logo p{font-size:12px;color:var(--muted);margin-top:4px;}
+
+/* ---- Form ---- */
+.fg{margin-bottom:16px;}
+.fg label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px;}
+.fg input,.fg textarea,.fg select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;transition:border-color .15s;background:#fff;}
+.fg input:focus,.fg textarea:focus,.fg select:focus{outline:none;border-color:var(--primary);}
+.hint{font-size:11px;color:var(--muted);margin-top:4px;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:480px){.info-grid{grid-template-columns:1fr;}}
+
+/* ---- Buttons ---- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:inherit;}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-primary:hover{background:#1d4ed8;}
+.btn-secondary{background:var(--bg);color:var(--text);border:1.5px solid var(--border);}
+.btn-secondary:hover{background:var(--border);}
+.btn-danger{background:#fef2f2;color:#dc2626;border:1.5px solid #fca5a5;}
+.btn-danger:hover{background:#fee2e2;}
+.btn-full{width:100%;padding:12px;}
+.btn-sm{padding:6px 12px;font-size:12px;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+
+/* ---- Dashboard ---- */
+#screen-dashboard{flex-direction:column;}
+.dash-header{background:#fff;border-bottom:1px solid var(--border);padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:var(--shadow);}
+.header-top{display:flex;align-items:center;gap:12px;padding:12px 0;}
+.header-title{font-size:15px;font-weight:700;color:var(--primary);}
+.header-title span{font-size:11px;font-weight:400;color:var(--muted);display:block;}
+.search-wrap{display:flex;align-items:center;gap:8px;border:1.5px solid var(--border);border-radius:8px;padding:6px 12px;background:var(--bg);flex:1;max-width:360px;}
+.search-wrap input{border:none;background:none;outline:none;font-size:14px;width:100%;font-family:inherit;}
+
+.filter-bar{display:flex;gap:6px;padding:8px 0;overflow-x:auto;scrollbar-width:none;}
+.filter-bar::-webkit-scrollbar{display:none;}
+.fbtn{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:#fff;white-space:nowrap;transition:all .15s;font-family:inherit;}
+.fbtn.active{border-color:var(--primary);background:var(--primary-light);color:var(--primary);}
+
+.dash-body{padding:16px 20px;flex:1;}
+.case-count{font-size:12px;color:var(--muted);margin-bottom:12px;}
+.case-grid{display:grid;gap:10px;}
+
+/* ---- Case Card ---- */
+.card{background:#fff;border-radius:var(--r);padding:16px;box-shadow:var(--shadow);cursor:pointer;border:1.5px solid transparent;transition:all .15s;}
+.card:hover{border-color:var(--primary);box-shadow:var(--shadow-md);transform:translateY(-1px);}
+.card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;}
+.card-info{flex:1;min-width:0;}
+.company{font-weight:700;font-size:15px;}
+.contact-name{font-size:12px;color:var(--muted);}
+.subject{font-size:13px;margin:4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.summary-preview{font-size:12px;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.card-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:10px;}
+.card-date{font-size:11px;color:var(--muted);}
+
+/* Status Badge */
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1.5px solid;white-space:nowrap;}
+
+/* FAB */
+.fab{position:fixed;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%;background:var(--primary);color:#fff;border:none;font-size:24px;cursor:pointer;box-shadow:0 4px 12px rgba(30,64,175,.4);display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:200;}
+.fab:hover{background:#1d4ed8;transform:scale(1.08);}
+
+/* ---- Modal ---- */
+.overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:300;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;backdrop-filter:blur(2px);}
+.overlay.open{display:flex;}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:700px;box-shadow:var(--shadow-lg);margin:auto;position:relative;}
+.modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
+.modal-title{font-size:16px;font-weight:700;flex:1;}
+.modal-close{background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px;padding:4px;line-height:1;}
+.modal-body{padding:20px 24px;max-height:78vh;overflow-y:auto;}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+
+/* Section */
+.section{margin-bottom:20px;}
+.section-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
+
+/* Status Selector */
+.status-grid{display:flex;flex-wrap:wrap;gap:8px;}
+.status-opt{padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid;transition:all .15s;font-family:inherit;background:#fff;}
+.status-opt.selected{color:#fff!important;}
+.status-opt:hover{opacity:.85;}
+
+/* Timeline */
+.timeline{position:relative;}
+.timeline::before{content:'';position:absolute;left:15px;top:0;bottom:0;width:2px;background:var(--border);}
+.tl-item{display:flex;gap:12px;margin-bottom:14px;position:relative;}
+.tl-dot{width:32px;height:32px;border-radius:50%;background:var(--primary-light);border:2px solid var(--primary);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;z-index:1;}
+.tl-body{flex:1;background:var(--bg);border-radius:8px;padding:12px;}
+.tl-meta{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.tl-date{font-size:11px;color:var(--muted);}
+.tl-who{font-size:11px;font-weight:600;color:var(--primary);background:var(--primary-light);padding:1px 8px;border-radius:10px;}
+.tl-summary{font-size:13px;line-height:1.7;}
+.tl-change{font-size:12px;color:var(--muted);}
+
+/* Email Area */
+.email-area{background:var(--bg);border-radius:10px;padding:16px;}
+.who-row{display:flex;gap:6px;margin-bottom:10px;}
+.who-btn{padding:4px 14px;border-radius:20px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:all .15s;}
+.who-btn.selected{border-color:var(--primary);background:var(--primary-light);color:var(--primary);}
+
+/* Loading */
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.load-cover{position:absolute;inset:0;background:rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;border-radius:16px;z-index:10;}
+
+/* Toast */
+#toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%) translateY(16px);background:#1e293b;color:#fff;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:all .3s;z-index:1000;pointer-events:none;white-space:nowrap;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* Empty */
+.empty{text-align:center;padding:48px 20px;color:var(--muted);}
+.empty-icon{font-size:44px;margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<!-- ========== SETUP SCREEN ========== -->
+<div id="screen-setup" class="screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div style="font-size:36px">📧</div>
+      <h1>メール返信管理システム</h1>
+      <p>日新インダストリー株式会社 — 初回設定</p>
+    </div>
+    <div class="fg">
+      <label>Supabase Project URL</label>
+      <input type="url" id="s-sb-url" placeholder="https://xxxxxxxx.supabase.co">
+      <div class="hint">Supabase ダッシュボード → Project Settings → API に記載</div>
+    </div>
+    <div class="fg">
+      <label>Supabase Anon Key</label>
+      <input type="password" id="s-sb-key" placeholder="eyJh...">
+      <div class="hint">同ページの「anon public」キー</div>
+    </div>
+    <div class="fg">
+      <label>Gemini API Key</label>
+      <input type="password" id="s-gemini" placeholder="AIzaSy...">
+      <div class="hint">Google AI Studio（aistudio.google.com）で無料取得</div>
+    </div>
+    <div class="fg">
+      <label>アプリのパスワード</label>
+      <input type="password" id="s-pw" placeholder="社長・秘書で共用するパスワード">
+      <div class="hint">任意の文字列。このブラウザにのみ保存されます。</div>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="saveSetup()">設定を保存してログイン画面へ →</button>
+  </div>
+</div>
+
+<!-- ========== LOGIN SCREEN ========== -->
+<div id="screen-login" class="screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div style="font-size:40px">📧</div>
+      <h1>メール返信管理システム</h1>
+      <p>日新インダストリー株式会社</p>
+    </div>
+    <div class="fg">
+      <label>パスワード</label>
+      <input type="password" id="l-pw" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter')login()">
+    </div>
+    <button class="btn btn-primary btn-full" onclick="login()">ログイン</button>
+    <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+    <button class="btn btn-secondary" style="width:100%;font-size:12px;" onclick="showScreen('setup')">⚙ 接続設定を変更する</button>
+  </div>
+</div>
+
+<!-- ========== DASHBOARD SCREEN ========== -->
+<div id="screen-dashboard" class="screen" style="flex-direction:column;">
+  <div class="dash-header">
+    <div class="header-top">
+      <div class="header-title">
+        メール返信管理
+        <span>日新インダストリー株式会社</span>
+      </div>
+      <div class="search-wrap">
+        <span style="color:var(--muted);">🔍</span>
+        <input type="text" id="search-input" placeholder="取引先・担当者・件名で検索" oninput="filterCases()">
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="logout()" title="ログアウト">⎋ ログアウト</button>
+    </div>
+    <div class="filter-bar">
+      <button class="fbtn active" onclick="setFilter('all',this)">すべて</button>
+      <button class="fbtn" onclick="setFilter('【自社】要返信',this)">🔴 【自社】要返信</button>
+      <button class="fbtn" onclick="setFilter('【自社】保留・検討中',this)">🟠 【自社】保留・検討中</button>
+      <button class="fbtn" onclick="setFilter('【先方】返信待ち',this)">🔵 【先方】返信待ち</button>
+      <button class="fbtn" onclick="setFilter('【先方】確認中',this)">🟣 【先方】確認中</button>
+      <button class="fbtn" onclick="setFilter('完了',this)">✅ 完了</button>
+    </div>
+  </div>
+  <div class="dash-body">
+    <div class="case-count" id="case-count"></div>
+    <div class="case-grid" id="case-grid"></div>
+    <div class="empty" id="empty-state" style="display:none;">
+      <div class="empty-icon">📭</div>
+      <p>該当する案件がありません</p>
+      <p style="font-size:12px;margin-top:6px;">右下の「＋」ボタンから新規案件を登録できます</p>
+    </div>
+  </div>
+  <button class="fab" onclick="openNewCase()" title="新規案件を追加">＋</button>
+</div>
+
+<!-- ========== DETAIL MODAL ========== -->
+<div class="overlay" id="overlay-detail">
+  <div class="modal" id="modal-detail">
+    <div id="detail-loading" class="load-cover" style="display:none;">
+      <span style="color:var(--muted);font-size:13px;">⏳ 読み込み中...</span>
+    </div>
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="d-company">案件詳細</div>
+        <div style="font-size:12px;color:var(--muted);" id="d-contact-disp"></div>
+      </div>
+      <button class="modal-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- 案件情報 -->
+      <div class="section">
+        <div class="section-label">案件情報</div>
+        <div class="info-grid">
+          <div class="fg" style="margin:0;">
+            <label>取引先名</label>
+            <input type="text" id="d-company-in">
+          </div>
+          <div class="fg" style="margin:0;">
+            <label>担当者名</label>
+            <input type="text" id="d-contact-in">
+          </div>
+          <div class="fg" style="margin:0;grid-column:1/-1;">
+            <label>メール件名</label>
+            <input type="text" id="d-subject-in">
+          </div>
+          <div class="fg" style="margin:0;grid-column:1/-1;">
+            <label>申し送りメモ</label>
+            <textarea id="d-memo-in" rows="2" style="resize:vertical;"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button class="btn btn-primary btn-sm" onclick="saveCase()">💾 保存</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCase()">🗑 削除</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- ステータス -->
+      <div class="section">
+        <div class="section-label">ステータス</div>
+        <div class="status-grid" id="status-grid"></div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- メール追加 -->
+      <div class="section">
+        <div class="section-label">メールを追加・AI要約</div>
+        <div class="email-area">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">操作者を選択</div>
+          <div class="who-row">
+            <button class="who-btn selected" id="who-sec" onclick="selectWho('秘書')">秘書</button>
+            <button class="who-btn" id="who-pres" onclick="selectWho('社長')">社長</button>
+          </div>
+          <div class="fg" style="margin-bottom:10px;">
+            <label>メール本文を貼り付け</label>
+            <textarea id="email-in" rows="6" placeholder="ここにメール本文をそのまま貼り付けてください。AIが自動で要約します。" style="resize:vertical;"></textarea>
+          </div>
+          <button class="btn btn-primary" id="sum-btn" style="width:100%;" onclick="summarize()">
+            ✨ AI要約して履歴に追加
+          </button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- 履歴タイムライン -->
+      <div class="section">
+        <div class="section-label">やり取り履歴</div>
+        <div class="timeline" id="timeline"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ========== NEW CASE MODAL ========== -->
+<div class="overlay" id="overlay-new">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">新規案件を登録</div>
+      <button class="modal-close" onclick="closeNew()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:none;">
+      <div class="info-grid">
+        <div class="fg" style="margin:0;">
+          <label>取引先名 *</label>
+          <input type="text" id="n-company" placeholder="株式会社〇〇">
+        </div>
+        <div class="fg" style="margin:0;">
+          <label>担当者名</label>
+          <input type="text" id="n-contact" placeholder="山田 太郎">
+        </div>
+        <div class="fg" style="margin:0;grid-column:1/-1;">
+          <label>メール件名 *</label>
+          <input type="text" id="n-subject" placeholder="件名を入力">
+        </div>
+        <div class="fg" style="margin:0;grid-column:1/-1;">
+          <label>初期ステータス</label>
+          <select id="n-status">
+            <option>【自社】要返信</option>
+            <option>【自社】保留・検討中</option>
+            <option>【先方】返信待ち</option>
+            <option>【先方】確認中</option>
+            <option>完了</option>
+          </select>
+        </div>
+        <div class="fg" style="margin:0;grid-column:1/-1;">
+          <label>メモ</label>
+          <textarea id="n-memo" rows="2" placeholder="申し送り事項など" style="resize:vertical;"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeNew()">キャンセル</button>
+      <button class="btn btn-primary" onclick="createCase()">登録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+/* ======================================================
+   定数・ステータス定義
+====================================================== */
+const STATUSES = [
+  '【自社】要返信',
+  '【自社】保留・検討中',
+  '【先方】返信待ち',
+  '【先方】確認中',
+  '完了'
+];
+
+const ST = {
+  '【自社】要返信':    {bg:'#dc2626',light:'#fef2f2',border:'#fca5a5',icon:'🔴'},
+  '【自社】保留・検討中':{bg:'#ea580c',light:'#fff7ed',border:'#fdba74',icon:'🟠'},
+  '【先方】返信待ち':  {bg:'#2563eb',light:'#eff6ff',border:'#93c5fd',icon:'🔵'},
+  '【先方】確認中':    {bg:'#7c3aed',light:'#f5f3ff',border:'#c4b5fd',icon:'🟣'},
+  '完了':             {bg:'#6b7280',light:'#f9fafb',border:'#d1d5db',icon:'✅'}
+};
+
+/* ======================================================
+   状態
+====================================================== */
+let sb = null;
+let cfg = {};
+let state = {
+  cases:[], selectedCase:null, histories:[],
+  filter:'all', query:'', who:'秘書'
+};
+
+/* ======================================================
+   初期化
+====================================================== */
+window.onload = () => {
+  cfg = {
+    sbUrl:  localStorage.getItem('ni_sb_url')  || '',
+    sbKey:  localStorage.getItem('ni_sb_key')  || '',
+    gemini: localStorage.getItem('ni_gemini')  || '',
+    pw:     localStorage.getItem('ni_pw')      || ''
+  };
+  if (!cfg.sbUrl || !cfg.sbKey) {
+    showScreen('setup');
+  } else {
+    initSb();
+    showScreen('login');
+  }
+};
+
+function initSb() {
+  try { sb = supabase.createClient(cfg.sbUrl, cfg.sbKey); }
+  catch(e) { toast('Supabase接続エラー: ' + e.message, true); }
+}
+
+/* ======================================================
+   セットアップ
+====================================================== */
+function saveSetup() {
+  const url  = $v('s-sb-url');
+  const key  = $v('s-sb-key');
+  const gem  = $v('s-gemini');
+  const pw   = $v('s-pw');
+  if (!url||!key||!gem||!pw) { toast('すべての項目を入力してください', true); return; }
+  if (!url.startsWith('https://')) { toast('URLはhttps://で始まる必要があります', true); return; }
+  localStorage.setItem('ni_sb_url', url);
+  localStorage.setItem('ni_sb_key', key);
+  localStorage.setItem('ni_gemini', gem);
+  localStorage.setItem('ni_pw',     pw);
+  cfg = {sbUrl:url, sbKey:key, gemini:gem, pw};
+  initSb();
+  toast('設定を保存しました ✓');
+  showScreen('login');
+}
+
+/* ======================================================
+   ログイン
+====================================================== */
+function login() {
+  if ($v('l-pw') === cfg.pw) {
+    showScreen('dashboard');
+    loadCases();
+  } else {
+    toast('パスワードが違います', true);
+    document.getElementById('l-pw').value = '';
+    document.getElementById('l-pw').focus();
+  }
+}
+
+function logout() {
+  if (!confirm('ログアウトしますか？')) return;
+  showScreen('login');
+  document.getElementById('l-pw').value = '';
+}
+
+/* ======================================================
+   画面切替
+====================================================== */
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+/* ======================================================
+   案件一覧
+====================================================== */
+async function loadCases() {
+  try {
+    const { data, error } = await sb.from('cases').select('*').order('last_action_at', {ascending:false});
+    if (error) throw error;
+    state.cases = data || [];
+    renderCases();
+  } catch(e) { toast('案件の読み込みに失敗しました: ' + e.message, true); }
+}
+
+function renderCases() {
+  const q  = state.query.toLowerCase();
+  const sf = state.filter;
+  const filtered = state.cases.filter(c => {
+    const okStatus = sf === 'all' || c.status === sf;
+    const okSearch = !q || [c.company_name,c.contact_name,c.subject].some(v=>(v||'').toLowerCase().includes(q));
+    return okStatus && okSearch;
+  });
+
+  $id('case-count').textContent = `${filtered.length}件表示中（全${state.cases.length}件）`;
+  const grid  = $id('case-grid');
+  const empty = $id('empty-state');
+
+  if (!filtered.length) { grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+
+  grid.innerHTML = filtered.map(c => {
+    const s   = ST[c.status] || ST['完了'];
+    const dt  = c.last_action_at ? new Date(c.last_action_at).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'}) : '';
+    const sum = c.latest_summary ? c.latest_summary.slice(0,90) + (c.latest_summary.length>90?'…':'') : '（要約なし）';
+    return `
+    <div class="card" onclick="openDetail('${c.id}')">
+      <div class="card-top">
+        <div class="card-info">
+          <div class="company">${esc(c.company_name)}</div>
+          ${c.contact_name?`<div class="contact-name">${esc(c.contact_name)}</div>`:''}
+          <div class="subject">📋 ${esc(c.subject)}</div>
+        </div>
+        <span class="badge" style="background:${s.light};color:${s.bg};border-color:${s.border};">${esc(c.status)}</span>
+      </div>
+      <div class="summary-preview">${esc(sum)}</div>
+      <div class="card-bottom">
+        <span class="card-date">最終アクション: ${dt}</span>
+        <span style="font-size:11px;color:#94a3b8;">タップで詳細 →</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterCases() {
+  state.query = $id('search-input').value;
+  renderCases();
+}
+
+function setFilter(status, btn) {
+  state.filter = status;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCases();
+}
+
+/* ======================================================
+   案件詳細
+====================================================== */
+async function openDetail(id) {
+  state.selectedCase = state.cases.find(c => c.id === id);
+  if (!state.selectedCase) return;
+  const c = state.selectedCase;
+
+  $id('d-company').textContent      = c.company_name;
+  $id('d-contact-disp').textContent = c.contact_name ? '担当: ' + c.contact_name : '';
+  $val('d-company-in', c.company_name  || '');
+  $val('d-contact-in', c.contact_name  || '');
+  $val('d-subject-in', c.subject        || '');
+  $val('d-memo-in',    c.memo           || '');
+  $val('email-in',     '');
+  renderStatusGrid(c.status);
+  $id('overlay-detail').classList.add('open');
+  await loadHistories(id);
+}
+
+function renderStatusGrid(cur) {
+  $id('status-grid').innerHTML = STATUSES.map(s => {
+    const st  = ST[s];
+    const sel = s === cur;
+    return `<button class="status-opt${sel?' selected':''}"
+      style="border-color:${st.bg};color:${sel?'#fff':st.bg};background:${sel?st.bg:'#fff'};"
+      onclick="changeStatus('${s}')">${st.icon} ${s}</button>`;
+  }).join('');
+}
+
+async function loadHistories(caseId) {
+  $id('timeline').innerHTML = '<div style="color:var(--muted);font-size:13px;">読み込み中...</div>';
+  try {
+    const {data,error} = await sb.from('histories').select('*').eq('case_id',caseId).order('created_at',{ascending:false});
+    if (error) throw error;
+    state.histories = data || [];
+    renderTimeline();
+  } catch(e) {
+    $id('timeline').innerHTML = '<div style="color:#ef4444;font-size:13px;">履歴の読み込みに失敗しました</div>';
+  }
+}
+
+function renderTimeline() {
+  if (!state.histories.length) {
+    $id('timeline').innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0;">まだ履歴がありません。<br>上のエリアからメール本文を追加してみましょう。</div>';
+    return;
+  }
+  $id('timeline').innerHTML = state.histories.map(h => {
+    const dt = new Date(h.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    let icon='📋', body='';
+    if (h.action_type === 'email_added') {
+      icon = '📧';
+      body = `<div class="tl-summary">${esc(h.ai_summary||'')}</div>`;
+      if (h.email_body) body += `<details style="margin-top:8px;"><summary style="font-size:11px;color:var(--muted);cursor:pointer;">元のメール本文を表示</summary><pre style="font-size:11px;color:var(--muted);white-space:pre-wrap;margin-top:6px;max-height:180px;overflow-y:auto;background:#fff;padding:8px;border-radius:6px;">${esc(h.email_body)}</pre></details>`;
+    } else if (h.action_type === 'status_changed') {
+      icon = '🔄';
+      body = `<div class="tl-change">ステータス変更：<strong>${esc(h.status_before||'')}</strong> → <strong>${esc(h.status_after||'')}</strong></div>`;
+    } else if (h.action_type === 'memo_updated') {
+      icon = '📝';
+      body = '<div class="tl-change">メモを更新しました</div>';
+    }
+    return `
+    <div class="tl-item">
+      <div class="tl-dot">${icon}</div>
+      <div class="tl-body">
+        <div class="tl-meta">
+          <span class="tl-date">${dt}</span>
+          ${h.created_by?`<span class="tl-who">${esc(h.created_by)}</span>`:''}
+        </div>
+        ${body}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function closeDetail() {
+  $id('overlay-detail').classList.remove('open');
+  state.selectedCase = null;
+}
+
+/* ======================================================
+   案件保存
+====================================================== */
+async function saveCase() {
+  if (!state.selectedCase) return;
+  const upd = {
+    company_name: $v('d-company-in'),
+    contact_name: $v('d-contact-in'),
+    subject:      $v('d-subject-in'),
+    memo:         $v('d-memo-in'),
+    updated_at:   new Date().toISOString()
+  };
+  if (!upd.company_name||!upd.subject) { toast('取引先名と件名は必須です', true); return; }
+  try {
+    const {error} = await sb.from('cases').update(upd).eq('id', state.selectedCase.id);
+    if (error) throw error;
+    Object.assign(state.selectedCase, upd);
+    const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
+    if (idx>=0) Object.assign(state.cases[idx], upd);
+    $id('d-company').textContent = upd.company_name;
+    $id('d-contact-disp').textContent = upd.contact_name ? '担当: '+upd.contact_name : '';
+    renderCases();
+    toast('保存しました ✓');
+  } catch(e) { toast('保存に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   案件削除
+====================================================== */
+async function deleteCase() {
+  if (!state.selectedCase) return;
+  if (!confirm(`「${state.selectedCase.company_name}」の案件を削除しますか？\nこの操作は取り消せません。`)) return;
+  try {
+    const {error} = await sb.from('cases').delete().eq('id', state.selectedCase.id);
+    if (error) throw error;
+    state.cases = state.cases.filter(c=>c.id!==state.selectedCase.id);
+    renderCases();
+    closeDetail();
+    toast('案件を削除しました');
+  } catch(e) { toast('削除に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   ステータス変更
+====================================================== */
+async function changeStatus(newSt) {
+  if (!state.selectedCase || state.selectedCase.status === newSt) return;
+  const oldSt = state.selectedCase.status;
+  try {
+    const now = new Date().toISOString();
+    const {error:e1} = await sb.from('cases').update({status:newSt,last_action_at:now,updated_at:now}).eq('id',state.selectedCase.id);
+    if (e1) throw e1;
+    await sb.from('histories').insert({
+      case_id:state.selectedCase.id, action_type:'status_changed',
+      status_before:oldSt, status_after:newSt, created_by:state.who
+    });
+    state.selectedCase.status = newSt;
+    state.selectedCase.last_action_at = now;
+    const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
+    if (idx>=0){state.cases[idx].status=newSt;state.cases[idx].last_action_at=now;}
+    renderStatusGrid(newSt);
+    await loadHistories(state.selectedCase.id);
+    renderCases();
+    toast(`ステータスを「${newSt}」に変更しました`);
+  } catch(e) { toast('ステータス変更に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   AI要約
+====================================================== */
+async function summarize() {
+  const body = $v('email-in');
+  if (!body) { toast('メール本文を入力してください', true); return; }
+  if (!cfg.gemini) { toast('Gemini APIキーが設定されていません', true); return; }
+
+  const btn = $id('sum-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>&nbsp;AI要約中...';
+
+  try {
+    const prompt = `以下はビジネスメールです。要点・経緯・次に必要なアクションを日本語で3〜5文で簡潔に要約してください。\n返信の要否がわかるように記述してください。\n\n---\n${body}\n---`;
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cfg.gemini}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.error?.message || `HTTPエラー ${res.status}`);
+    }
+
+    const json = await res.json();
+    const summary = json.candidates?.[0]?.content?.parts?.[0]?.text || '（要約の取得に失敗しました）';
+    const now = new Date().toISOString();
+
+    const {error:he} = await sb.from('histories').insert({
+      case_id:state.selectedCase.id, action_type:'email_added',
+      email_body:body, ai_summary:summary, created_by:state.who
+    });
+    if (he) throw he;
+
+    await sb.from('cases').update({latest_summary:summary, last_action_at:now, updated_at:now}).eq('id',state.selectedCase.id);
+
+    state.selectedCase.latest_summary = summary;
+    state.selectedCase.last_action_at = now;
+    const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
+    if (idx>=0){state.cases[idx].latest_summary=summary;state.cases[idx].last_action_at=now;}
+
+    $val('email-in','');
+    await loadHistories(state.selectedCase.id);
+    renderCases();
+    toast('AIが要約して履歴に追加しました ✨');
+  } catch(e) {
+    toast('要約に失敗しました: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '✨ AI要約して履歴に追加';
+  }
+}
+
+/* ======================================================
+   操作者切替
+====================================================== */
+function selectWho(who) {
+  state.who = who;
+  $id('who-sec').classList.toggle('selected',  who==='秘書');
+  $id('who-pres').classList.toggle('selected', who==='社長');
+}
+
+/* ======================================================
+   新規案件
+====================================================== */
+function openNewCase() {
+  ['n-company','n-contact','n-subject','n-memo'].forEach(id=>$val(id,''));
+  $id('n-status').value = '【自社】要返信';
+  $id('overlay-new').classList.add('open');
+  setTimeout(()=>$id('n-company').focus(),100);
+}
+function closeNew() { $id('overlay-new').classList.remove('open'); }
+
+async function createCase() {
+  const company = $v('n-company');
+  const subject = $v('n-subject');
+  if (!company||!subject) { toast('取引先名と件名は必須です', true); return; }
+  const newCase = {
+    company_name: company,
+    contact_name: $v('n-contact'),
+    subject,
+    status:       $id('n-status').value,
+    memo:         $v('n-memo'),
+    last_action_at: new Date().toISOString()
+  };
+  try {
+    const {data,error} = await sb.from('cases').insert(newCase).select().single();
+    if (error) throw error;
+    state.cases.unshift(data);
+    renderCases();
+    closeNew();
+    toast('案件を登録しました ✓');
+    openDetail(data.id);
+  } catch(e) { toast('登録に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   Toast
+====================================================== */
+let _tt;
+function toast(msg, isErr=false) {
+  const el = $id('toast');
+  el.textContent = msg;
+  el.style.background = isErr ? '#dc2626' : '#1e293b';
+  el.classList.add('show');
+  clearTimeout(_tt);
+  _tt = setTimeout(()=>el.classList.remove('show'), 3000);
+}
+
+/* ======================================================
+   ユーティリティ
+====================================================== */
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function $id(id){ return document.getElementById(id); }
+function $v(id) { return ($id(id)?.value||'').trim(); }
+function $val(id,v){ const el=$id(id); if(el) el.value=v; }
+
+// オーバーレイ外クリックで閉じる
+$id('overlay-detail').addEventListener('click', e=>{ if(e.target===$id('overlay-detail')) closeDetail(); });
+$id('overlay-new').addEventListener('click',    e=>{ if(e.target===$id('overlay-new'))    closeNew(); });
+</script>
+</body>
+</html>

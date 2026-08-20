@@ -641,7 +641,8 @@ async function saveCase() {
     renderCases();
     toast('保存しました ✓');
     notifySlack(
-      `📝 *案件情報を編集* — ${upd.company_name}／${upd.subject}\n` +
+      `📝 *案件情報を編集*\n` +
+      `　${upd.company_name}／${upd.subject}\n` +
       `　操作者: ${state.who}`
     );
   } catch(e) { toast('保存に失敗しました: ' + e.message, true); }
@@ -687,7 +688,8 @@ async function changeStatus(newSt) {
     toast(`ステータスを「${newSt}」に変更しました`);
     const c = state.selectedCase;
     notifySlack(
-      `🔄 *ステータス変更* — ${c.company_name}／${c.subject}\n` +
+      `🔄 *ステータス変更*\n` +
+      `　${c.company_name}／${c.subject}\n` +
       `　${oldSt}　→　*${newSt}*\n` +
       `　操作者: ${state.who}`
     );
@@ -743,7 +745,8 @@ async function summarize() {
     toast('AIが要約して履歴に追加しました ✨');
     const sc = state.selectedCase;
     notifySlack(
-      `📧 *新しいメールを記録* — ${sc.company_name}／${sc.subject}\n` +
+      `📧 *新しいメールを記録*\n` +
+      `　${sc.company_name}／${sc.subject}\n` +
       `　操作者: ${state.who}\n` +
       `　要約: ${summary.slice(0,120)}${summary.length>120?'…':''}`
     );
@@ -795,7 +798,8 @@ async function createCase() {
     closeNew();
     toast('案件を登録しました ✓');
     notifySlack(
-      `🆕 *新規案件を登録* — ${data.company_name}／${data.subject}\n` +
+      `🆕 *新規案件を登録*\n` +
+      `　${data.company_name}／${data.subject}\n` +
       `　担当者: ${data.contact_name||'未設定'}　ステータス: ${data.status}`
     );
     openDetail(data.id);

@@ -173,6 +173,11 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
       <input type="password" id="s-pw" placeholder="社長・秘書で共用するパスワード">
       <div class="hint">任意の文字列。このブラウザにのみ保存されます。</div>
     </div>
+    <div class="fg">
+      <label>Slack Webhook URL（任意）</label>
+      <input type="text" id="s-slack" placeholder="https://hooks.slack.com/services/...">
+      <div class="hint">入力すると案件の更新・追加時にSlackへ通知が届きます</div>
+    </div>
     <button class="btn btn-primary btn-full" onclick="saveSetup()">設定を保存してログイン画面へ →</button>
   </div>
 </div>
@@ -278,6 +283,11 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
       <div class="section">
         <div class="section-label">ステータス</div>
         <div class="status-grid" id="status-grid"></div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-secondary btn-sm" onclick="askReplySlack()" title="Slackに返信確認メッセージを送る" style="border-color:#e879f9;color:#a21caf;background:#fdf4ff;">
+            💬 「このメール返信済みですか？」をSlackに送る
+          </button>
+        </div>
       </div>
 
       <hr class="divider">
@@ -398,7 +408,8 @@ window.onload = () => {
     sbUrl:  localStorage.getItem('ni_sb_url')  || '',
     sbKey:  localStorage.getItem('ni_sb_key')  || '',
     gemini: localStorage.getItem('ni_gemini')  || '',
-    pw:     localStorage.getItem('ni_pw')      || ''
+    pw:     localStorage.getItem('ni_pw')      || '',
+    slack:  localStorage.getItem('ni_slack')   || ''
   };
   if (!cfg.sbUrl || !cfg.sbKey) {
     showScreen('setup');
@@ -417,17 +428,19 @@ function initSb() {
    セットアップ
 ====================================================== */
 function saveSetup() {
-  const url  = $v('s-sb-url');
-  const key  = $v('s-sb-key');
-  const gem  = $v('s-gemini');
-  const pw   = $v('s-pw');
+  const url   = $v('s-sb-url');
+  const key   = $v('s-sb-key');
+  const gem   = $v('s-gemini');
+  const pw    = $v('s-pw');
+  const slack = $v('s-slack');
   if (!url||!key||!gem||!pw) { toast('すべての項目を入力してください', true); return; }
   if (!url.startsWith('https://')) { toast('URLはhttps://で始まる必要があります', true); return; }
   localStorage.setItem('ni_sb_url', url);
   localStorage.setItem('ni_sb_key', key);
   localStorage.setItem('ni_gemini', gem);
   localStorage.setItem('ni_pw',     pw);
-  cfg = {sbUrl:url, sbKey:key, gemini:gem, pw};
+  localStorage.setItem('ni_slack',  slack);
+  cfg = {sbUrl:url, sbKey:key, gemini:gem, pw, slack};
   initSb();
   toast('設定を保存しました ✓');
   showScreen('login');
@@ -627,6 +640,10 @@ async function saveCase() {
     $id('d-contact-disp').textContent = upd.contact_name ? '担当: '+upd.contact_name : '';
     renderCases();
     toast('保存しました ✓');
+    notifySlack(
+      `📝 *案件情報を編集* — ${upd.company_name}／${upd.subject}\n` +
+      `　操作者: ${state.who}`
+    );
   } catch(e) { toast('保存に失敗しました: ' + e.message, true); }
 }
 
@@ -668,6 +685,12 @@ async function changeStatus(newSt) {
     await loadHistories(state.selectedCase.id);
     renderCases();
     toast(`ステータスを「${newSt}」に変更しました`);
+    const c = state.selectedCase;
+    notifySlack(
+      `🔄 *ステータス変更* — ${c.company_name}／${c.subject}\n` +
+      `　${oldSt}　→　*${newSt}*\n` +
+      `　操作者: ${state.who}`
+    );
   } catch(e) { toast('ステータス変更に失敗しました: ' + e.message, true); }
 }
 
@@ -718,6 +741,12 @@ async function summarize() {
     await loadHistories(state.selectedCase.id);
     renderCases();
     toast('AIが要約して履歴に追加しました ✨');
+    const sc = state.selectedCase;
+    notifySlack(
+      `📧 *新しいメールを記録* — ${sc.company_name}／${sc.subject}\n` +
+      `　操作者: ${state.who}\n` +
+      `　要約: ${summary.slice(0,120)}${summary.length>120?'…':''}`
+    );
   } catch(e) {
     toast('要約に失敗しました: ' + e.message, true);
   } finally {
@@ -765,8 +794,44 @@ async function createCase() {
     renderCases();
     closeNew();
     toast('案件を登録しました ✓');
+    notifySlack(
+      `🆕 *新規案件を登録* — ${data.company_name}／${data.subject}\n` +
+      `　担当者: ${data.contact_name||'未設定'}　ステータス: ${data.status}`
+    );
     openDetail(data.id);
   } catch(e) { toast('登録に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   返信確認Slack送信
+====================================================== */
+async function askReplySlack() {
+  if (!cfg.slack) { toast('Slack Webhook URLが設定されていません', true); return; }
+  if (!state.selectedCase) return;
+  const c = state.selectedCase;
+  const msg =
+    `❓ *返信確認* — ${c.company_name}／${c.subject}\n` +
+    `　担当者: ${c.contact_name||'未設定'}\n` +
+    `　現在のステータス: ${c.status}\n` +
+    `\n` +
+    `このメール、返信済みですか？ご確認をお願いします🙏`;
+  await notifySlack(msg);
+  toast('Slackに返信確認メッセージを送りました 💬');
+}
+
+/* ======================================================
+   Slack 通知
+====================================================== */
+async function notifySlack(text) {
+  if (!cfg.slack) return;
+  try {
+    await fetch(cfg.slack, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+  } catch(e) { /* silent */ }
 }
 
 /* ======================================================

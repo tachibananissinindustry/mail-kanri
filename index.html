@@ -162,6 +162,23 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
 /* Empty */
 .empty{text-align:center;padding:48px 20px;color:var(--muted);}
 .empty-icon{font-size:44px;margin-bottom:12px;}
+
+/* ---- Mode Toggle ---- */
+.mode-toggle{display:flex;gap:6px;padding:10px 0 4px;}
+.mode-btn{padding:6px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:#fff;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:5px;}
+.mode-btn.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+
+/* ---- Sample Cards ---- */
+.sample-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:640px){.sample-grid{grid-template-columns:1fr;}}
+.sample-card{background:#fff;border-radius:var(--r);padding:16px;box-shadow:var(--shadow);cursor:pointer;border:1.5px solid transparent;transition:all .15s;position:relative;}
+.sample-card:hover{border-color:var(--primary);box-shadow:var(--shadow-md);transform:translateY(-1px);}
+.sample-card.overdue{border-left:4px solid #dc2626;}
+.sample-dates{display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;}
+.sample-date-item{display:flex;flex-direction:column;gap:2px;}
+.sample-date-lbl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+.sample-date-val{font-size:13px;font-weight:600;}
+.reminder-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1.5px solid;}
 </style>
 </head>
 <body>
@@ -226,16 +243,22 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
   <div class="dash-header">
     <div class="header-top">
       <div class="header-title">
-        メール返信管理
+        <span id="header-mode-label">メール返信管理</span>
         <span>日新インダストリー株式会社</span>
       </div>
       <div class="search-wrap">
         <span style="color:var(--muted);">🔍</span>
-        <input type="text" id="search-input" placeholder="取引先・担当者・件名で検索" oninput="filterCases()">
+        <input type="text" id="search-input" placeholder="取引先・担当者・件名で検索" oninput="onSearch()">
       </div>
       <button class="btn btn-secondary btn-sm" onclick="logout()" title="ログアウト">⎋ ログアウト</button>
     </div>
-    <div class="filter-bar">
+    <!-- モード切替 -->
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="mode-mail" onclick="switchMode('mail')">📧 メール管理</button>
+      <button class="mode-btn" id="mode-sample" onclick="switchMode('sample')">🧪 サンプル管理</button>
+    </div>
+    <!-- メールフィルター -->
+    <div class="filter-bar" id="mail-filter-bar">
       <button class="fbtn active" onclick="setFilter('all',this)">すべて</button>
       <button class="fbtn" onclick="setFilter('【自社】要返信',this)">🔴 【自社】要返信</button>
       <button class="fbtn" onclick="setFilter('【自社】保留・検討中',this)">🟠 【自社】保留・検討中</button>
@@ -243,8 +266,18 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
       <button class="fbtn" onclick="setFilter('【先方】確認中',this)">🟣 【先方】確認中</button>
       <button class="fbtn" onclick="setFilter('完了',this)">✅ 完了</button>
     </div>
+    <!-- サンプルフィルター -->
+    <div class="filter-bar" id="sample-filter-bar" style="display:none;">
+      <button class="fbtn active" onclick="setSampleFilter('all',this)">すべて</button>
+      <button class="fbtn" onclick="setSampleFilter('送付済み',this)">🔵 送付済み</button>
+      <button class="fbtn" onclick="setSampleFilter('リマインド',this)">🔔 リマインド！</button>
+      <button class="fbtn" onclick="setSampleFilter('フォロー済み',this)">🟢 フォロー済み</button>
+      <button class="fbtn" onclick="setSampleFilter('完了',this)">✅ 完了</button>
+    </div>
   </div>
-  <div class="dash-body">
+
+  <!-- メールビュー -->
+  <div class="dash-body" id="mail-view">
     <div class="case-count" id="case-count"></div>
     <div class="case-grid" id="case-grid"></div>
     <div class="empty" id="empty-state" style="display:none;">
@@ -253,7 +286,19 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
       <p style="font-size:12px;margin-top:6px;">右下の「＋」ボタンから新規案件を登録できます</p>
     </div>
   </div>
-  <button class="fab" onclick="openNewCase()" title="新規案件を追加">＋</button>
+
+  <!-- サンプルビュー -->
+  <div class="dash-body" id="sample-view" style="display:none;">
+    <div class="case-count" id="sample-count"></div>
+    <div id="sample-grid"></div>
+    <div class="empty" id="sample-empty" style="display:none;">
+      <div class="empty-icon">📦</div>
+      <p>該当するサンプルがありません</p>
+      <p style="font-size:12px;margin-top:6px;">右下の「＋」ボタンからサンプル発送を登録できます</p>
+    </div>
+  </div>
+
+  <button class="fab" id="main-fab" onclick="onFab()" title="新規追加">＋</button>
 </div>
 
 <!-- ========== DETAIL MODAL ========== -->
@@ -388,6 +433,112 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
   </div>
 </div>
 
+<!-- ========== NEW SAMPLE MODAL ========== -->
+<div class="overlay" id="overlay-new-sample">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">🧪 サンプル発送を登録</div>
+      <button class="modal-close" onclick="closeNewSample()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:none;">
+      <div class="info-grid">
+        <div class="fg" style="margin:0;">
+          <label>取引先名 *</label>
+          <input type="text" id="ns-company" placeholder="株式会社〇〇">
+        </div>
+        <div class="fg" style="margin:0;">
+          <label>担当者名</label>
+          <input type="text" id="ns-contact" placeholder="山田 太郎">
+        </div>
+        <div class="fg" style="margin:0;grid-column:1/-1;">
+          <label>サンプル内容 *</label>
+          <textarea id="ns-content" rows="2" placeholder="例：マザックスS（シルバー）200g × 2本" style="resize:vertical;"></textarea>
+        </div>
+        <div class="fg" style="margin:0;">
+          <label>サンプル送付日 *</label>
+          <input type="date" id="ns-shipped">
+        </div>
+        <div class="fg" style="margin:0;">
+          <label>リマインド日（自動計算：送付日+3ヶ月）</label>
+          <input type="date" id="ns-reminder" readonly style="background:#f8fafc;color:var(--muted);">
+        </div>
+        <div class="fg" style="margin:0;grid-column:1/-1;">
+          <label>メモ</label>
+          <textarea id="ns-memo" rows="2" placeholder="申し送り事項など" style="resize:vertical;"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeNewSample()">キャンセル</button>
+      <button class="btn btn-primary" onclick="createSample()">登録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SAMPLE DETAIL MODAL ========== -->
+<div class="overlay" id="overlay-sample-detail">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="sd-company-title">サンプル詳細</div>
+        <div style="font-size:12px;color:var(--muted);" id="sd-contact-disp"></div>
+      </div>
+      <button class="modal-close" onclick="closeSampleDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- 基本情報 -->
+      <div class="section">
+        <div class="section-label">基本情報</div>
+        <div class="info-grid">
+          <div class="fg" style="margin:0;">
+            <label>取引先名</label>
+            <input type="text" id="sd-company-in">
+          </div>
+          <div class="fg" style="margin:0;">
+            <label>担当者名</label>
+            <input type="text" id="sd-contact-in">
+          </div>
+          <div class="fg" style="margin:0;grid-column:1/-1;">
+            <label>サンプル内容</label>
+            <textarea id="sd-content-in" rows="2" style="resize:vertical;"></textarea>
+          </div>
+          <div class="fg" style="margin:0;">
+            <label>サンプル送付日</label>
+            <input type="date" id="sd-shipped-in">
+          </div>
+          <div class="fg" style="margin:0;">
+            <label>リマインド日</label>
+            <input type="date" id="sd-reminder-in">
+          </div>
+          <div class="fg" style="margin:0;grid-column:1/-1;">
+            <label>メモ</label>
+            <textarea id="sd-memo-in" rows="2" style="resize:vertical;"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button class="btn btn-primary btn-sm" onclick="saveSampleDetail()">💾 保存</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteSampleItem()">🗑 削除</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- ステータス -->
+      <div class="section">
+        <div class="section-label">対応ステータス</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;" id="sample-status-grid"></div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-secondary btn-sm" onclick="askSampleSlack()" style="border-color:#e879f9;color:#a21caf;background:#fdf4ff;">
+            💬 「サンプルの評価はいかがですか？」をSlackに送る
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"></div>
 
@@ -418,7 +569,17 @@ let sb = null;
 let cfg = {};
 let state = {
   cases:[], selectedCase:null, histories:[],
-  filter:'all', query:'', who:'秘書'
+  filter:'all', query:'', who:'秘書',
+  mode:'mail',
+  samples:[], selectedSample:null,
+  sampleFilter:'all', sampleQuery:''
+};
+
+const SAMPLE_STATUSES = ['送付済み','フォロー済み','完了'];
+const SS = {
+  '送付済み':    {bg:'#2563eb',light:'#eff6ff',border:'#93c5fd',icon:'🔵'},
+  'フォロー済み':{bg:'#16a34a',light:'#f0fdf4',border:'#86efac',icon:'🟢'},
+  '完了':        {bg:'#6b7280',light:'#f9fafb',border:'#d1d5db',icon:'✅'}
 };
 
 /* ======================================================
@@ -474,6 +635,7 @@ function login() {
   if ($v('l-pw') === cfg.pw) {
     showScreen('dashboard');
     loadCases();
+    loadSamples().then(checkReminders);
   } else {
     toast('パスワードが違います', true);
     document.getElementById('l-pw').value = '';
@@ -579,10 +741,11 @@ function renderCases() {
   }</div>`;
 }
 
-function filterCases() {
-  state.query = $id('search-input').value;
-  renderCases();
+function onSearch() {
+  if (state.mode === 'mail') { state.query = $id('search-input').value; renderCases(); }
+  else { state.sampleQuery = $id('search-input').value; renderSamples(); }
 }
+function filterCases() { onSearch(); }
 
 function setFilter(status, btn) {
   state.filter = status;
@@ -873,6 +1036,281 @@ async function createCase() {
     );
     openDetail(data.id);
   } catch(e) { toast('登録に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   モード切替
+====================================================== */
+function switchMode(mode) {
+  state.mode = mode;
+  $id('mode-mail').classList.toggle('active',   mode === 'mail');
+  $id('mode-sample').classList.toggle('active', mode === 'sample');
+  $id('mail-filter-bar').style.display   = mode === 'mail'   ? '' : 'none';
+  $id('sample-filter-bar').style.display = mode === 'sample' ? '' : 'none';
+  $id('mail-view').style.display         = mode === 'mail'   ? '' : 'none';
+  $id('sample-view').style.display       = mode === 'sample' ? '' : 'none';
+  $id('header-mode-label').textContent   = mode === 'mail'   ? 'メール返信管理' : 'サンプル管理';
+  $id('search-input').placeholder        = mode === 'mail'
+    ? '取引先・担当者・件名で検索' : '取引先・担当者・内容で検索';
+  $id('search-input').value = '';
+  if (mode === 'sample') renderSamples();
+}
+
+function onFab() {
+  state.mode === 'mail' ? openNewCase() : openNewSample();
+}
+
+/* ======================================================
+   サンプル一覧
+====================================================== */
+async function loadSamples() {
+  try {
+    const {data,error} = await sb.from('samples').select('*').order('shipped_date',{ascending:false});
+    if (error) throw error;
+    state.samples = data || [];
+  } catch(e) { toast('サンプルの読み込みに失敗: ' + e.message, true); }
+}
+
+function renderSamples() {
+  const q  = state.sampleQuery.toLowerCase();
+  const sf = state.sampleFilter;
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  const filtered = state.samples.filter(s => {
+    const isOverdue = s.status === '送付済み' && new Date(s.reminder_date) <= today;
+    let okFilter = sf === 'all'
+      || (sf === 'リマインド' && isOverdue)
+      || (sf !== 'リマインド' && s.status === sf);
+    const okQ = !q || [s.company_name,s.contact_name,s.sample_content].some(v=>(v||'').toLowerCase().includes(q));
+    return okFilter && okQ;
+  });
+
+  $id('sample-count').textContent = `${filtered.length}件表示中（全${state.samples.length}件）`;
+  const grid  = $id('sample-grid');
+  const empty = $id('sample-empty');
+
+  if (!filtered.length) { grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+
+  grid.innerHTML = `<div class="sample-grid">${filtered.map(s => {
+    const isOverdue = s.status === '送付済み' && new Date(s.reminder_date) <= today;
+    const ss = SS[s.status] || SS['完了'];
+    const shipped  = s.shipped_date  ? new Date(s.shipped_date +'T00:00:00').toLocaleDateString('ja-JP',{year:'numeric',month:'numeric',day:'numeric'}) : '';
+    const reminder = s.reminder_date ? new Date(s.reminder_date+'T00:00:00').toLocaleDateString('ja-JP',{year:'numeric',month:'numeric',day:'numeric'}) : '';
+    const tag = isOverdue
+      ? `<span class="reminder-tag" style="background:#fef2f2;color:#dc2626;border-color:#fca5a5;">🔔 リマインド！</span>`
+      : `<span class="reminder-tag" style="background:${ss.light};color:${ss.bg};border-color:${ss.border};">${ss.icon} ${esc(s.status)}</span>`;
+    return `
+    <div class="sample-card${isOverdue?' overdue':''}" onclick="openSampleDetail('${s.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
+        <div>
+          <div class="company">${esc(s.company_name)}</div>
+          ${s.contact_name?`<div class="contact-name">${esc(s.contact_name)}</div>`:''}
+        </div>
+        ${tag}
+      </div>
+      <div style="font-size:13px;color:#475569;margin-bottom:8px;">📦 ${esc(s.sample_content)}</div>
+      ${s.memo?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${esc(s.memo)}</div>`:''}
+      <div class="sample-dates">
+        <div class="sample-date-item">
+          <span class="sample-date-lbl">送付日</span>
+          <span class="sample-date-val">${shipped}</span>
+        </div>
+        <div class="sample-date-item">
+          <span class="sample-date-lbl">リマインド日</span>
+          <span class="sample-date-val" style="${isOverdue?'color:#dc2626;':''}">${reminder}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function setSampleFilter(f, btn) {
+  state.sampleFilter = f;
+  document.querySelectorAll('#sample-filter-bar .fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSamples();
+}
+
+/* ======================================================
+   リマインダーチェック（ログイン時）
+====================================================== */
+function checkReminders() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = state.samples.filter(s =>
+    s.status === '送付済み' && new Date(s.reminder_date) <= today
+  );
+  if (!due.length) return;
+  const list = due.map(s=>`・${s.company_name}（${s.sample_content}）`).join('\n');
+  toast(`🔔 リマインド ${due.length}件 — サンプルのフォローが必要です`);
+  notifySlack(
+    `🔔 *サンプルフォロー リマインド*\n` +
+    `以下のサンプルはフォロー期日を迎えています。ご確認ください。\n\n${list}`
+  );
+}
+
+/* ======================================================
+   新規サンプル登録
+====================================================== */
+function openNewSample() {
+  ['ns-company','ns-contact','ns-content','ns-memo'].forEach(id=>$val(id,''));
+  const today = new Date().toISOString().slice(0,10);
+  $val('ns-shipped', today);
+  calcReminder();
+  $id('overlay-new-sample').classList.add('open');
+  setTimeout(()=>$id('ns-company').focus(),100);
+  // 送付日変更でリマインド自動計算
+  $id('ns-shipped').oninput = calcReminder;
+}
+function closeNewSample() { $id('overlay-new-sample').classList.remove('open'); }
+
+function calcReminder() {
+  const d = $id('ns-shipped').value;
+  if (!d) return;
+  const rd = new Date(d); rd.setMonth(rd.getMonth()+3);
+  $val('ns-reminder', rd.toISOString().slice(0,10));
+}
+
+async function createSample() {
+  const company = $v('ns-company');
+  const content = $v('ns-content');
+  const shipped = $id('ns-shipped').value;
+  if (!company||!content||!shipped) { toast('取引先名・サンプル内容・送付日は必須です', true); return; }
+  const reminder = $id('ns-reminder').value || (() => {
+    const d=new Date(shipped); d.setMonth(d.getMonth()+3); return d.toISOString().slice(0,10);
+  })();
+  const rec = { company_name:company, contact_name:$v('ns-contact'),
+    sample_content:content, shipped_date:shipped, reminder_date:reminder,
+    status:'送付済み', memo:$v('ns-memo') };
+  try {
+    const {data,error} = await sb.from('samples').insert(rec).select().single();
+    if (error) throw error;
+    state.samples.unshift(data);
+    renderSamples();
+    closeNewSample();
+    toast('サンプルを登録しました ✓');
+    notifySlack(
+      `📦 *サンプル発送を登録*\n` +
+      `　${data.company_name}　担当: ${data.contact_name||'未設定'}\n` +
+      `　内容: ${data.sample_content}\n` +
+      `　送付日: ${data.shipped_date}　リマインド: ${data.reminder_date}`
+    );
+  } catch(e) { toast('登録に失敗しました: '+e.message, true); }
+}
+
+/* ======================================================
+   サンプル詳細
+====================================================== */
+function openSampleDetail(id) {
+  state.selectedSample = state.samples.find(s=>s.id===id);
+  if (!state.selectedSample) return;
+  const s = state.selectedSample;
+  $id('sd-company-title').textContent      = s.company_name;
+  $id('sd-contact-disp').textContent       = s.contact_name ? '担当: '+s.contact_name : '';
+  $val('sd-company-in',  s.company_name  || '');
+  $val('sd-contact-in',  s.contact_name  || '');
+  $val('sd-content-in',  s.sample_content|| '');
+  $val('sd-shipped-in',  s.shipped_date  || '');
+  $val('sd-reminder-in', s.reminder_date || '');
+  $val('sd-memo-in',     s.memo          || '');
+  renderSampleStatusGrid(s.status);
+  $id('overlay-sample-detail').classList.add('open');
+}
+function closeSampleDetail() {
+  $id('overlay-sample-detail').classList.remove('open');
+  state.selectedSample = null;
+}
+
+function renderSampleStatusGrid(cur) {
+  $id('sample-status-grid').innerHTML = SAMPLE_STATUSES.map(st => {
+    const ss  = SS[st];
+    const sel = st === cur;
+    return `<button class="status-opt${sel?' selected':''}"
+      style="border-color:${ss.bg};color:${sel?'#fff':ss.bg};background:${sel?ss.bg:'#fff'};"
+      onclick="changeSampleStatus('${st}')">${ss.icon} ${st}</button>`;
+  }).join('');
+}
+
+async function changeSampleStatus(newSt) {
+  if (!state.selectedSample || state.selectedSample.status === newSt) return;
+  const oldSt = state.selectedSample.status;
+  try {
+    const {error} = await sb.from('samples').update({status:newSt,updated_at:new Date().toISOString()}).eq('id',state.selectedSample.id);
+    if (error) throw error;
+    state.selectedSample.status = newSt;
+    const idx = state.samples.findIndex(s=>s.id===state.selectedSample.id);
+    if (idx>=0) state.samples[idx].status = newSt;
+    renderSampleStatusGrid(newSt);
+    renderSamples();
+    toast(`ステータスを「${newSt}」に変更しました`);
+    const s = state.selectedSample;
+    notifySlack(
+      `🔄 *サンプルステータス変更*\n` +
+      `　${s.company_name}／${s.sample_content}\n` +
+      `　${oldSt}　→　*${newSt}*`
+    );
+  } catch(e) { toast('変更に失敗: '+e.message, true); }
+}
+
+async function saveSampleDetail() {
+  if (!state.selectedSample) return;
+  const upd = {
+    company_name:   $v('sd-company-in'),
+    contact_name:   $v('sd-contact-in'),
+    sample_content: $v('sd-content-in'),
+    shipped_date:   $id('sd-shipped-in').value,
+    reminder_date:  $id('sd-reminder-in').value,
+    memo:           $v('sd-memo-in'),
+    updated_at:     new Date().toISOString()
+  };
+  if (!upd.company_name||!upd.sample_content||!upd.shipped_date) {
+    toast('取引先名・サンプル内容・送付日は必須です', true); return;
+  }
+  try {
+    const {error} = await sb.from('samples').update(upd).eq('id',state.selectedSample.id);
+    if (error) throw error;
+    Object.assign(state.selectedSample, upd);
+    const idx = state.samples.findIndex(s=>s.id===state.selectedSample.id);
+    if (idx>=0) Object.assign(state.samples[idx], upd);
+    $id('sd-company-title').textContent = upd.company_name;
+    $id('sd-contact-disp').textContent  = upd.contact_name ? '担当: '+upd.contact_name : '';
+    renderSamples();
+    toast('保存しました ✓');
+    notifySlack(
+      `📝 *サンプル情報を編集*\n` +
+      `　${upd.company_name}／${upd.sample_content}`
+    );
+  } catch(e) { toast('保存に失敗: '+e.message, true); }
+}
+
+async function deleteSampleItem() {
+  if (!state.selectedSample) return;
+  if (!confirm(`「${state.selectedSample.company_name}」のサンプルを削除しますか？`)) return;
+  try {
+    const {error} = await sb.from('samples').delete().eq('id',state.selectedSample.id);
+    if (error) throw error;
+    state.samples = state.samples.filter(s=>s.id!==state.selectedSample.id);
+    renderSamples();
+    closeSampleDetail();
+    toast('サンプルを削除しました');
+  } catch(e) { toast('削除に失敗: '+e.message, true); }
+}
+
+/* ======================================================
+   サンプルフォロー確認Slack
+====================================================== */
+async function askSampleSlack() {
+  if (!cfg.slack) { toast('Slack Webhook URLが設定されていません', true); return; }
+  if (!state.selectedSample) return;
+  const s = state.selectedSample;
+  await notifySlack(
+    `❓ *サンプル評価確認* — ${s.company_name}\n` +
+    `　担当者: ${s.contact_name||'未設定'}\n` +
+    `　サンプル内容: ${s.sample_content}\n` +
+    `　送付日: ${s.shipped_date}\n` +
+    `\nサンプルの評価はいかがですか？ご確認をお願いします🙏`
+  );
+  toast('Slackにフォロー確認メッセージを送りました 💬');
 }
 
 /* ======================================================

@@ -1127,10 +1127,23 @@ function setSampleFilter(f, btn) {
 ====================================================== */
 function checkReminders() {
   const today = new Date(); today.setHours(0,0,0,0);
-  const due = state.samples.filter(s =>
-    s.status === '送付済み' && new Date(s.reminder_date) <= today
-  );
+
+  // 通知済みサンプルIDの一覧をlocalStorageから取得
+  let notifiedIds = [];
+  try { notifiedIds = JSON.parse(localStorage.getItem('ni_reminder_notified') || '[]'); } catch(e) {}
+
+  // 期日を迎えていて、かつまだ通知していないものだけ対象
+  const due = state.samples.filter(s => {
+    if (s.status !== '送付済み') return false;
+    const rd = new Date(s.reminder_date + 'T00:00:00'); rd.setHours(0,0,0,0);
+    return rd <= today && !notifiedIds.includes(s.id);
+  });
   if (!due.length) return;
+
+  // 通知済みIDに追加して保存
+  const newIds = [...notifiedIds, ...due.map(s => s.id)];
+  localStorage.setItem('ni_reminder_notified', JSON.stringify(newIds));
+
   const list = due.map(s=>`・${s.company_name}（${s.content}）`).join('\n');
   toast(`🔔 リマインド ${due.length}件 — サンプルのフォローが必要です`);
   notifySlack(

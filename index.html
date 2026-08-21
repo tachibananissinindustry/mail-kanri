@@ -464,7 +464,7 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
         </div>
         <div class="fg" style="margin:0;grid-column:1/-1;">
           <label>メモ</label>
-          <textarea id="ns-memo" rows="2" placeholder="申し送り事項など" style="resize:vertical;"></textarea>
+          <textarea id="ns-notes" rows="2" placeholder="申し送り事項など" style="resize:vertical;"></textarea>
         </div>
       </div>
     </div>
@@ -513,7 +513,7 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
           </div>
           <div class="fg" style="margin:0;grid-column:1/-1;">
             <label>メモ</label>
-            <textarea id="sd-memo-in" rows="2" style="resize:vertical;"></textarea>
+            <textarea id="sd-notes-in" rows="2" style="resize:vertical;"></textarea>
           </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:12px;">
@@ -767,7 +767,7 @@ async function openDetail(id) {
   $val('d-company-in', c.company_name  || '');
   $val('d-contact-in', c.contact_name  || '');
   $val('d-subject-in', c.subject        || '');
-  $val('d-memo-in',    c.memo           || '');
+  $val('d-memo-in',    c.notes           || '');
   $val('email-in',     '');
   renderStatusGrid(c.status);
   $id('overlay-detail').classList.add('open');
@@ -858,7 +858,7 @@ async function saveCase() {
     company_name: $v('d-company-in'),
     contact_name: $v('d-contact-in'),
     subject:      $v('d-subject-in'),
-    memo:         $v('d-memo-in'),
+    notes:         $v('d-memo-in'),
     updated_at:   new Date().toISOString()
   };
   if (!upd.company_name||!upd.subject) { toast('取引先名と件名は必須です', true); return; }
@@ -1019,7 +1019,7 @@ async function createCase() {
     contact_name: $v('n-contact'),
     subject,
     status:       $id('n-status').value,
-    memo:         $v('n-memo'),
+    notes:         $v('n-memo'),
     last_action_at: new Date().toISOString()
   };
   try {
@@ -1065,7 +1065,7 @@ function onFab() {
 ====================================================== */
 async function loadSamples() {
   try {
-    const {data,error} = await sb.from('samples').select('*').order('shipped_date',{ascending:false});
+    const {data,error} = await sb.from('samples').select('*').order('sent_date',{ascending:false});
     if (error) throw error;
     state.samples = data || [];
   } catch(e) { toast('サンプルの読み込みに失敗: ' + e.message, true); }
@@ -1081,7 +1081,7 @@ function renderSamples() {
     let okFilter = sf === 'all'
       || (sf === 'リマインド' && isOverdue)
       || (sf !== 'リマインド' && s.status === sf);
-    const okQ = !q || [s.company_name,s.contact_name,s.sample_content].some(v=>(v||'').toLowerCase().includes(q));
+    const okQ = !q || [s.company_name,s.contact_name,s.content].some(v=>(v||'').toLowerCase().includes(q));
     return okFilter && okQ;
   });
 
@@ -1095,7 +1095,7 @@ function renderSamples() {
   grid.innerHTML = `<div class="sample-grid">${filtered.map(s => {
     const isOverdue = s.status === '送付済み' && new Date(s.reminder_date) <= today;
     const ss = SS[s.status] || SS['完了'];
-    const shipped  = s.shipped_date  ? new Date(s.shipped_date +'T00:00:00').toLocaleDateString('ja-JP',{year:'numeric',month:'numeric',day:'numeric'}) : '';
+    const shipped  = s.sent_date  ? new Date(s.sent_date +'T00:00:00').toLocaleDateString('ja-JP',{year:'numeric',month:'numeric',day:'numeric'}) : '';
     const reminder = s.reminder_date ? new Date(s.reminder_date+'T00:00:00').toLocaleDateString('ja-JP',{year:'numeric',month:'numeric',day:'numeric'}) : '';
     const tag = isOverdue
       ? `<span class="reminder-tag" style="background:#fef2f2;color:#dc2626;border-color:#fca5a5;">🔔 リマインド！</span>`
@@ -1109,8 +1109,8 @@ function renderSamples() {
         </div>
         ${tag}
       </div>
-      <div style="font-size:13px;color:#475569;margin-bottom:8px;">📦 ${esc(s.sample_content)}</div>
-      ${s.memo?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${esc(s.memo)}</div>`:''}
+      <div style="font-size:13px;color:#475569;margin-bottom:8px;">📦 ${esc(s.content)}</div>
+      ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${esc(s.notes)}</div>`:''}
       <div class="sample-dates">
         <div class="sample-date-item">
           <span class="sample-date-lbl">送付日</span>
@@ -1141,7 +1141,7 @@ function checkReminders() {
     s.status === '送付済み' && new Date(s.reminder_date) <= today
   );
   if (!due.length) return;
-  const list = due.map(s=>`・${s.company_name}（${s.sample_content}）`).join('\n');
+  const list = due.map(s=>`・${s.company_name}（${s.content}）`).join('\n');
   toast(`🔔 リマインド ${due.length}件 — サンプルのフォローが必要です`);
   notifySlack(
     `🔔 *サンプルフォロー リマインド*\n` +
@@ -1153,7 +1153,7 @@ function checkReminders() {
    新規サンプル登録
 ====================================================== */
 function openNewSample() {
-  ['ns-company','ns-contact','ns-content','ns-memo'].forEach(id=>$val(id,''));
+  ['ns-company','ns-contact','ns-content','ns-notes'].forEach(id=>$val(id,''));
   const today = new Date().toISOString().slice(0,10);
   $val('ns-shipped', today);
   calcReminder();
@@ -1180,8 +1180,8 @@ async function createSample() {
     const d=new Date(shipped); d.setMonth(d.getMonth()+3); return d.toISOString().slice(0,10);
   })();
   const rec = { company_name:company, contact_name:$v('ns-contact'),
-    sample_content:content, shipped_date:shipped, reminder_date:reminder,
-    status:'送付済み', memo:$v('ns-memo') };
+    content:content, sent_date:shipped, reminder_date:reminder,
+    status:'送付済み', notes:$v('ns-notes') };
   try {
     const {data,error} = await sb.from('samples').insert(rec).select().single();
     if (error) throw error;
@@ -1192,8 +1192,8 @@ async function createSample() {
     notifySlack(
       `📦 *サンプル発送を登録*\n` +
       `　${data.company_name}　担当: ${data.contact_name||'未設定'}\n` +
-      `　内容: ${data.sample_content}\n` +
-      `　送付日: ${data.shipped_date}　リマインド: ${data.reminder_date}`
+      `　内容: ${data.content}\n` +
+      `　送付日: ${data.sent_date}　リマインド: ${data.reminder_date}`
     );
   } catch(e) { toast('登録に失敗しました: '+e.message, true); }
 }
@@ -1209,10 +1209,10 @@ function openSampleDetail(id) {
   $id('sd-contact-disp').textContent       = s.contact_name ? '担当: '+s.contact_name : '';
   $val('sd-company-in',  s.company_name  || '');
   $val('sd-contact-in',  s.contact_name  || '');
-  $val('sd-content-in',  s.sample_content|| '');
-  $val('sd-shipped-in',  s.shipped_date  || '');
+  $val('sd-content-in',  s.content|| '');
+  $val('sd-shipped-in',  s.sent_date  || '');
   $val('sd-reminder-in', s.reminder_date || '');
-  $val('sd-memo-in',     s.memo          || '');
+  $val('sd-notes-in',     s.notes          || '');
   renderSampleStatusGrid(s.status);
   $id('overlay-sample-detail').classList.add('open');
 }
@@ -1246,7 +1246,7 @@ async function changeSampleStatus(newSt) {
     const s = state.selectedSample;
     notifySlack(
       `🔄 *サンプルステータス変更*\n` +
-      `　${s.company_name}／${s.sample_content}\n` +
+      `　${s.company_name}／${s.content}\n` +
       `　${oldSt}　→　*${newSt}*`
     );
   } catch(e) { toast('変更に失敗: '+e.message, true); }
@@ -1257,13 +1257,12 @@ async function saveSampleDetail() {
   const upd = {
     company_name:   $v('sd-company-in'),
     contact_name:   $v('sd-contact-in'),
-    sample_content: $v('sd-content-in'),
-    shipped_date:   $id('sd-shipped-in').value,
+    content: $v('sd-content-in'),
+    sent_date:   $id('sd-shipped-in').value,
     reminder_date:  $id('sd-reminder-in').value,
-    memo:           $v('sd-memo-in'),
-    updated_at:     new Date().toISOString()
+    notes:           $v('sd-notes-in')
   };
-  if (!upd.company_name||!upd.sample_content||!upd.shipped_date) {
+  if (!upd.company_name||!upd.content||!upd.sent_date) {
     toast('取引先名・サンプル内容・送付日は必須です', true); return;
   }
   try {
@@ -1278,7 +1277,7 @@ async function saveSampleDetail() {
     toast('保存しました ✓');
     notifySlack(
       `📝 *サンプル情報を編集*\n` +
-      `　${upd.company_name}／${upd.sample_content}`
+      `　${upd.company_name}／${upd.content}`
     );
   } catch(e) { toast('保存に失敗: '+e.message, true); }
 }
@@ -1306,8 +1305,8 @@ async function askSampleSlack() {
   await notifySlack(
     `❓ *サンプル評価確認* — ${s.company_name}\n` +
     `　担当者: ${s.contact_name||'未設定'}\n` +
-    `　サンプル内容: ${s.sample_content}\n` +
-    `　送付日: ${s.shipped_date}\n` +
+    `　サンプル内容: ${s.content}\n` +
+    `　送付日: ${s.sent_date}\n` +
     `\nサンプルの評価はいかがですか？ご確認をお願いします🙏`
   );
   toast('Slackにフォロー確認メッセージを送りました 💬');

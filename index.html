@@ -1225,7 +1225,7 @@ async function changeSampleStatus(newSt) {
   if (!state.selectedSample || state.selectedSample.status === newSt) return;
   const oldSt = state.selectedSample.status;
   try {
-    const {error} = await sb.from('samples').update({status:newSt,updated_at:new Date().toISOString()}).eq('id',state.selectedSample.id);
+    const {error} = await sb.from('samples').update({status:newSt}).eq('id',state.selectedSample.id);
     if (error) throw error;
     state.selectedSample.status = newSt;
     const idx = state.samples.findIndex(s=>s.id===state.selectedSample.id);

@@ -941,7 +941,7 @@ async function summarize() {
   btn.innerHTML = '<div class="spinner"></div>&nbsp;AI要約中...';
 
   try {
-    const prompt = `以下はビジネスメールです。要点・経緯・次に必要なアクションを日本語で3〜5文で簡潔に要約してください。\n返信の要否がわかるように記述してください。\n\n---\n${body}\n---`;
+    const prompt = `以下はビジネスメールを要約してください。\n出力形式は以下のルールに従ってください：\n- 冒頭の説明文（「要約は以下の通りです」等）は一切不要です\n- 箇条書き（・）で3〜5項目にまとめてください\n- 各項目は「項目名：内容」の形式（例：・経緯：〇〇）\n- アスタリスク（*）やマークダウン記法は使用しないこと\n- 返信の要否を必ず含めること\n- 日本語で簡潔に\n\n---\n${body}\n---`;
 
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${cfg.gemini}`, {
       method:'POST',

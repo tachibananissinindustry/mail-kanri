@@ -872,11 +872,6 @@ async function saveCase() {
     $id('d-contact-disp').textContent = upd.contact_name ? '担当: '+upd.contact_name : '';
     renderCases();
     toast('保存しました ✓');
-    notifySlack(
-      `📝 *案件情報を編集*\n` +
-      `　${upd.company_name}／${upd.subject}\n` +
-      `　操作者: ${state.who}`
-    );
   } catch(e) { toast('保存に失敗しました: ' + e.message, true); }
 }
 
@@ -918,13 +913,15 @@ async function changeStatus(newSt) {
     await loadHistories(state.selectedCase.id);
     renderCases();
     toast(`ステータスを「${newSt}」に変更しました`);
-    const c = state.selectedCase;
-    notifySlack(
-      `🔄 *ステータス変更*\n` +
-      `　${c.company_name}／${c.subject}\n` +
-      `　${oldSt}　→　*${newSt}*\n` +
-      `　操作者: ${state.who}`
-    );
+    if (newSt.includes('要返信')) {
+      const c = state.selectedCase;
+      notifySlack(
+        `🔴 *要返信！*\n` +
+        `　${c.company_name}／${c.subject}\n` +
+        `　担当者: ${c.contact_name||'未設定'}\n` +
+        `　操作者: ${state.who}`
+      );
+    }
   } catch(e) { toast('ステータス変更に失敗しました: ' + e.message, true); }
 }
 
@@ -975,13 +972,6 @@ async function summarize() {
     await loadHistories(state.selectedCase.id);
     renderCases();
     toast('AIが要約して履歴に追加しました ✨');
-    const sc = state.selectedCase;
-    notifySlack(
-      `📧 *新しいメールを記録*\n` +
-      `　${sc.company_name}／${sc.subject}\n` +
-      `　操作者: ${state.who}\n` +
-      `　要約: ${summary.slice(0,120)}${summary.length>120?'…':''}`
-    );
   } catch(e) {
     toast('要約に失敗しました: ' + e.message, true);
   } finally {

@@ -909,7 +909,7 @@ async function openDetail(id) {
   $val('d-company-in', c.company_name  || '');
   $val('d-contact-in', c.contact_name  || '');
   $val('d-subject-in', c.subject        || '');
-  $val('d-memo-in',    c.notes           || '');
+  $val('d-memo-in',    c.memo            || '');
   $val('email-in',     '');
   renderStatusGrid(c.status);
   $id('overlay-detail').classList.add('open');
@@ -1000,7 +1000,7 @@ async function saveCase() {
     company_name: $v('d-company-in'),
     contact_name: $v('d-contact-in'),
     subject:      $v('d-subject-in'),
-    notes:         $v('d-memo-in'),
+    memo:          $v('d-memo-in'),
     updated_at:   new Date().toISOString()
   };
   if (!upd.company_name||!upd.subject) { toast('取引先名と件名は必須です', true); return; }
@@ -1151,7 +1151,7 @@ async function createCase() {
     contact_name: $v('n-contact'),
     subject,
     status:       $id('n-status').value,
-    notes:         $v('n-memo'),
+    memo:          $v('n-memo'),
     last_action_at: new Date().toISOString()
   };
   try {

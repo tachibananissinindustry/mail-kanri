@@ -213,10 +213,10 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
       <input type="password" id="s-sb-key" placeholder="eyJh...">
       <div class="hint">同ページの「anon public」キー</div>
     </div>
-    <div class="fg">
+    <div class="fg" style="display:none;">
       <label>Gemini API Key</label>
       <input type="password" id="s-gemini" placeholder="AIzaSy...">
-      <div class="hint">Google AI Studio（aistudio.google.com）で無料取得</div>
+      <div class="hint">現在未使用</div>
     </div>
     <div class="fg">
       <label>アプリのパスワード</label>
@@ -275,6 +275,7 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
       <button class="fbtn active" onclick="setFilter('all',this)">すべて</button>
       <button class="fbtn" onclick="setFilter('【自社】要返信',this)">🔴 【自社】要返信</button>
       <button class="fbtn" onclick="setFilter('【自社】保留・検討中',this)">🟠 【自社】保留・検討中</button>
+      <button class="fbtn" onclick="setFilter('【自社】返信不要（保留）',this)">⏸️ 【自社】返信不要（保留）</button>
       <button class="fbtn" onclick="setFilter('【先方】返信待ち',this)">🔵 【先方】返信待ち</button>
       <button class="fbtn" onclick="setFilter('【先方】確認中',this)">🟣 【先方】確認中</button>
       <button class="fbtn" onclick="setFilter('完了',this)">✅ 完了</button>
@@ -380,6 +381,16 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
       <div class="section">
         <div class="section-label">ステータス</div>
         <div class="status-grid" id="status-grid"></div>
+        <!-- 返信不要（保留）期限入力 -->
+        <div id="pending-until-section" style="display:none;margin-top:12px;background:#fafaf9;border:1.5px solid #d6d3d1;border-radius:8px;padding:12px;">
+          <div style="font-size:12px;font-weight:700;color:#78716c;margin-bottom:8px;">⏸️ 返信不要（保留）期限</div>
+          <div style="font-size:12px;color:#57534e;margin-bottom:8px;">期限日になると自動で「完了」に移行します。</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="date" id="pending-until-input" style="flex:1;padding:8px 10px;border:1.5px solid #d6d3d1;border-radius:6px;font-size:13px;font-family:inherit;">
+            <button class="btn btn-secondary btn-sm" onclick="savePendingUntil()" style="white-space:nowrap;">保存</button>
+          </div>
+          <div id="pending-until-current" style="font-size:11px;color:#78716c;margin-top:6px;"></div>
+        </div>
         <div style="margin-top:12px;">
           <button class="btn btn-secondary btn-sm" onclick="askReplySlack()" title="Slackに返信確認メッセージを送る" style="border-color:#e879f9;color:#a21caf;background:#fdf4ff;">
             💬 「このメール返信済みですか？」をSlackに送る
@@ -389,9 +400,9 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
 
       <hr class="divider">
 
-      <!-- メール追加 -->
+      <!-- 履歴追加（手動） -->
       <div class="section">
-        <div class="section-label">メールを追加・AI要約</div>
+        <div class="section-label">やり取りメモを追加</div>
         <div class="email-area">
           <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">操作者を選択</div>
           <div class="who-row">
@@ -399,11 +410,11 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
             <button class="who-btn" id="who-pres" onclick="selectWho('社長')">社長</button>
           </div>
           <div class="fg" style="margin-bottom:10px;">
-            <label>メール本文を貼り付け</label>
-            <textarea id="email-in" rows="6" placeholder="ここにメール本文をそのまま貼り付けてください。AIが自動で要約します。" style="resize:vertical;"></textarea>
+            <label>メモ・要約を入力</label>
+            <textarea id="email-in" rows="4" placeholder="やり取りの内容や要約を入力してください" style="resize:vertical;"></textarea>
           </div>
-          <button class="btn btn-primary" id="sum-btn" style="width:100%;" onclick="summarize()">
-            ✨ AI要約して履歴に追加
+          <button class="btn btn-primary" id="add-history-btn" style="width:100%;" onclick="addHistory()">
+            📝 履歴に追加
           </button>
         </div>
       </div>
@@ -446,6 +457,7 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
           <select id="n-status">
             <option>【自社】要返信</option>
             <option>【自社】保留・検討中</option>
+            <option>【自社】返信不要（保留）</option>
             <option>【先方】返信待ち</option>
             <option>【先方】確認中</option>
             <option>完了</option>
@@ -675,17 +687,19 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
 const STATUSES = [
   '【自社】要返信',
   '【自社】保留・検討中',
+  '【自社】返信不要（保留）',
   '【先方】返信待ち',
   '【先方】確認中',
   '完了'
 ];
 
 const ST = {
-  '【自社】要返信':    {bg:'#dc2626',light:'#fef2f2',border:'#fca5a5',icon:'🔴'},
-  '【自社】保留・検討中':{bg:'#ea580c',light:'#fff7ed',border:'#fdba74',icon:'🟠'},
-  '【先方】返信待ち':  {bg:'#2563eb',light:'#eff6ff',border:'#93c5fd',icon:'🔵'},
-  '【先方】確認中':    {bg:'#7c3aed',light:'#f5f3ff',border:'#c4b5fd',icon:'🟣'},
-  '完了':             {bg:'#6b7280',light:'#f9fafb',border:'#d1d5db',icon:'✅'}
+  '【自社】要返信':         {bg:'#dc2626',light:'#fef2f2',border:'#fca5a5',icon:'🔴'},
+  '【自社】保留・検討中':   {bg:'#ea580c',light:'#fff7ed',border:'#fdba74',icon:'🟠'},
+  '【自社】返信不要（保留）':{bg:'#78716c',light:'#fafaf9',border:'#d6d3d1',icon:'⏸️'},
+  '【先方】返信待ち':       {bg:'#2563eb',light:'#eff6ff',border:'#93c5fd',icon:'🔵'},
+  '【先方】確認中':         {bg:'#7c3aed',light:'#f5f3ff',border:'#c4b5fd',icon:'🟣'},
+  '完了':                  {bg:'#6b7280',light:'#f9fafb',border:'#d1d5db',icon:'✅'}
 };
 
 /* ======================================================
@@ -755,7 +769,7 @@ function saveSetup() {
   const gem   = $v('s-gemini');
   const pw    = $v('s-pw');
   const slack = $v('s-slack');
-  if (!url||!key||!gem||!pw) { toast('すべての項目を入力してください', true); return; }
+  if (!url||!key||!pw) { toast('必須項目を入力してください', true); return; }
   if (!url.startsWith('https://')) { toast('URLはhttps://で始まる必要があります', true); return; }
   localStorage.setItem('ni_sb_url', url);
   localStorage.setItem('ni_sb_key', key);
@@ -774,7 +788,7 @@ function saveSetup() {
 function login() {
   if ($v('l-pw') === cfg.pw) {
     showScreen('dashboard');
-    loadCases();
+    loadCases().then(checkPendingCases);
     loadSamples().then(checkReminders);
     loadTasks().then(checkTaskReminders);
   } else {
@@ -912,6 +926,7 @@ async function openDetail(id) {
   $val('d-memo-in',    c.memo            || '');
   $val('email-in',     '');
   renderStatusGrid(c.status);
+  renderPendingUntilSection(c.status);
   $id('overlay-detail').classList.add('open');
   await loadHistories(id);
 }
@@ -1052,13 +1067,22 @@ async function changeStatus(newSt) {
     const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
     if (idx>=0){state.cases[idx].status=newSt;state.cases[idx].last_action_at=now;}
     renderStatusGrid(newSt);
+    renderPendingUntilSection(newSt);
     await loadHistories(state.selectedCase.id);
     renderCases();
     toast(`ステータスを「${newSt}」に変更しました`);
+    const c = state.selectedCase;
     if (newSt.includes('要返信')) {
-      const c = state.selectedCase;
       notifySlack(
         `🔴 *要返信！*\n` +
+        `　${c.company_name}／${c.subject}\n` +
+        `　担当者: ${c.contact_name||'未設定'}\n` +
+        `　操作者: ${state.who}`
+      );
+    }
+    if (newSt === '完了') {
+      notifySlack(
+        `✅ *完了！*\n` +
         `　${c.company_name}／${c.subject}\n` +
         `　担当者: ${c.contact_name||'未設定'}\n` +
         `　操作者: ${state.who}`
@@ -1068,57 +1092,75 @@ async function changeStatus(newSt) {
 }
 
 /* ======================================================
-   AI要約
+   返信不要（保留）期限セクション表示制御
 ====================================================== */
-async function summarize() {
-  const body = $v('email-in');
-  if (!body) { toast('メール本文を入力してください', true); return; }
-  if (!cfg.gemini) { toast('Gemini APIキーが設定されていません', true); return; }
+function renderPendingUntilSection(status) {
+  const sec = $id('pending-until-section');
+  if (!sec) return;
+  const isPending = status === '【自社】返信不要（保留）';
+  sec.style.display = isPending ? '' : 'none';
+  if (isPending && state.selectedCase) {
+    const pu = state.selectedCase.pending_until;
+    $id('pending-until-input').value = pu || '';
+    $id('pending-until-current').textContent = pu
+      ? `現在の期限: ${new Date(pu + 'T00:00:00').toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric'})}`
+      : '期限が設定されていません';
+  }
+}
 
-  const btn = $id('sum-btn');
+/* ======================================================
+   返信不要（保留）期限保存
+====================================================== */
+async function savePendingUntil() {
+  const val = $id('pending-until-input').value;
+  if (!val) { toast('期限日を選択してください', true); return; }
+  if (!state.selectedCase) return;
+  try {
+    const {error} = await sb.from('cases').update({pending_until: val}).eq('id', state.selectedCase.id);
+    if (error) throw error;
+    state.selectedCase.pending_until = val;
+    const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
+    if (idx>=0) state.cases[idx].pending_until = val;
+    $id('pending-until-current').textContent = `現在の期限: ${new Date(val + 'T00:00:00').toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric'})}`;
+    toast('期限を保存しました ✓');
+  } catch(e) { toast('保存に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   履歴追加（手動）
+====================================================== */
+async function addHistory() {
+  const body = $v('email-in');
+  if (!body) { toast('メモ・要約を入力してください', true); return; }
+
+  const btn = $id('add-history-btn');
   btn.disabled = true;
-  btn.innerHTML = '<div class="spinner"></div>&nbsp;AI要約中...';
+  btn.innerHTML = '<div class="spinner"></div>&nbsp;追加中...';
 
   try {
-    const prompt = `以下はビジネスメールを要約してください。\n出力形式は以下のルールに従ってください：\n- 冒頭の説明文（「要約は以下の通りです」等）は一切不要です\n- 箇条書き（・）で3〜5項目にまとめてください\n- 各項目は「項目名：内容」の形式（例：・経緯：〇〇）\n- アスタリスク（*）やマークダウン記法は使用しないこと\n- 返信の要否を必ず含めること\n- 日本語で簡潔に\n\n---\n${body}\n---`;
-
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${cfg.gemini}`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(()=>({}));
-      throw new Error(err.error?.message || `HTTPエラー ${res.status}`);
-    }
-
-    const json = await res.json();
-    const summary = json.candidates?.[0]?.content?.parts?.[0]?.text || '（要約の取得に失敗しました）';
     const now = new Date().toISOString();
-
     const {error:he} = await sb.from('histories').insert({
       case_id:state.selectedCase.id, action_type:'email_added',
-      email_body:body, ai_summary:summary, created_by:state.who
+      ai_summary:body, created_by:state.who
     });
     if (he) throw he;
 
-    await sb.from('cases').update({latest_summary:summary, last_action_at:now, updated_at:now}).eq('id',state.selectedCase.id);
+    await sb.from('cases').update({latest_summary:body, last_action_at:now, updated_at:now}).eq('id',state.selectedCase.id);
 
-    state.selectedCase.latest_summary = summary;
+    state.selectedCase.latest_summary = body;
     state.selectedCase.last_action_at = now;
     const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
-    if (idx>=0){state.cases[idx].latest_summary=summary;state.cases[idx].last_action_at=now;}
+    if (idx>=0){state.cases[idx].latest_summary=body;state.cases[idx].last_action_at=now;}
 
     $val('email-in','');
     await loadHistories(state.selectedCase.id);
     renderCases();
-    toast('AIが要約して履歴に追加しました ✨');
+    toast('履歴に追加しました ✓');
   } catch(e) {
-    toast('要約に失敗しました: ' + e.message, true);
+    toast('追加に失敗しました: ' + e.message, true);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '✨ AI要約して履歴に追加';
+    btn.innerHTML = '📝 履歴に追加';
   }
 }
 
@@ -1269,6 +1311,46 @@ function setSampleFilter(f, btn) {
   document.querySelectorAll('#sample-filter-bar .fbtn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderSamples();
+}
+
+/* ======================================================
+   返信不要（保留）期限切れ → 自動完了
+====================================================== */
+async function checkPendingCases() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const pending = state.cases.filter(c => {
+    if (c.status !== '【自社】返信不要（保留）') return false;
+    if (!c.pending_until) return false;
+    const d = new Date(c.pending_until + 'T00:00:00'); d.setHours(0,0,0,0);
+    return d <= today;
+  });
+  if (!pending.length) return;
+
+  const now = new Date().toISOString();
+  for (const c of pending) {
+    try {
+      const {error:e1} = await sb.from('cases').update({
+        status:'完了', last_action_at:now, updated_at:now
+      }).eq('id', c.id);
+      if (e1) throw e1;
+      await sb.from('histories').insert({
+        case_id:c.id, action_type:'status_changed',
+        status_before:'【自社】返信不要（保留）', status_after:'完了',
+        created_by:'システム'
+      });
+      c.status = '完了';
+      c.last_action_at = now;
+      notifySlack(
+        `✅ *自動完了*\n` +
+        `　${c.company_name}／${c.subject}\n` +
+        `　返信不要（保留）期限（${c.pending_until}）を迎えたため「完了」に移行しました。`
+      );
+    } catch(e) { console.warn('checkPendingCases error:', e.message); }
+  }
+  if (pending.length) {
+    renderCases();
+    toast(`⏸️→✅ ${pending.length}件の保留案件が期限切れで自動完了しました`);
+  }
 }
 
 /* ======================================================

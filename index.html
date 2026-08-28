@@ -1076,16 +1076,14 @@ async function changeStatus(newSt) {
       notifySlack(
         `🔴 *要返信！*\n` +
         `　${c.company_name}／${c.subject}\n` +
-        `　担当者: ${c.contact_name||'未設定'}\n` +
-        `　操作者: ${state.who}`
+        `　担当者: ${c.contact_name||'未設定'}`
       );
     }
     if (newSt === '完了') {
       notifySlack(
         `✅ *完了！*\n` +
         `　${c.company_name}／${c.subject}\n` +
-        `　担当者: ${c.contact_name||'未設定'}\n` +
-        `　操作者: ${state.who}`
+        `　担当者: ${c.contact_name||'未設定'}`
       );
     }
   } catch(e) { toast('ステータス変更に失敗しました: ' + e.message, true); }

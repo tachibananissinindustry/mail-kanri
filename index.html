@@ -406,10 +406,11 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
         <div class="email-area">
           <div style="display:flex;gap:12px;margin-bottom:10px;">
             <div style="flex:1;">
-              <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">メールの種類</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">やり取りの種類</div>
               <div class="who-row">
                 <button class="who-btn selected" id="dir-recv" onclick="selectDirection('受信')" style="border-color:#2563eb;background:#eff6ff;color:#2563eb;">📨 受信</button>
                 <button class="who-btn" id="dir-send" onclick="selectDirection('送信')">📤 送信</button>
+                <button class="who-btn" id="dir-tel" onclick="selectDirection('電話')">📞 電話</button>
               </div>
             </div>
             <div style="flex:1;">
@@ -983,6 +984,11 @@ function renderTimeline() {
       dotStyle = 'background:#f0fdf4;border:2px solid #86efac;';
       dirBadge = `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#16a34a;border:1px solid #86efac;">📤 送信</span>`;
       body = `<div class="tl-summary">${esc(h.ai_summary||'')}</div>`;
+    } else if (h.action_type === 'phone_call') {
+      icon = '📞';
+      dotStyle = 'background:#fffbeb;border:2px solid #fcd34d;';
+      dirBadge = `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fffbeb;color:#d97706;border:1px solid #fcd34d;">📞 電話</span>`;
+      body = `<div class="tl-summary">${esc(h.ai_summary||'')}</div>`;
     } else if (h.action_type === 'status_changed') {
       icon = '🔄';
       body = `<div class="tl-change">ステータス変更：<strong>${esc(h.status_before||'')}</strong> → <strong>${esc(h.status_after||'')}</strong></div>`;
@@ -1156,7 +1162,9 @@ async function addHistory() {
 
   try {
     const now = new Date().toISOString();
-    const actionType = state.mailDirection === '送信' ? 'mail_sent' : 'mail_received';
+    const actionType = state.mailDirection === '送信' ? 'mail_sent'
+                     : state.mailDirection === '電話' ? 'phone_call'
+                     : 'mail_received';
     const {error:he} = await sb.from('histories').insert({
       case_id:state.selectedCase.id, action_type:actionType,
       ai_summary:body, created_by:state.who
@@ -1195,16 +1203,19 @@ function selectDirection(dir) {
   state.mailDirection = dir;
   const recvBtn = $id('dir-recv');
   const sendBtn = $id('dir-send');
+  const telBtn  = $id('dir-tel');
+  recvBtn.classList.remove('selected'); recvBtn.style.cssText = '';
+  sendBtn.classList.remove('selected'); sendBtn.style.cssText = '';
+  telBtn.classList.remove('selected');  telBtn.style.cssText  = '';
   if (dir === '受信') {
     recvBtn.classList.add('selected');
     recvBtn.style.cssText = 'border-color:#2563eb;background:#eff6ff;color:#2563eb;';
-    sendBtn.classList.remove('selected');
-    sendBtn.style.cssText = '';
-  } else {
+  } else if (dir === '送信') {
     sendBtn.classList.add('selected');
     sendBtn.style.cssText = 'border-color:#16a34a;background:#f0fdf4;color:#16a34a;';
-    recvBtn.classList.remove('selected');
-    recvBtn.style.cssText = '';
+  } else if (dir === '電話') {
+    telBtn.classList.add('selected');
+    telBtn.style.cssText = 'border-color:#d97706;background:#fffbeb;color:#d97706;';
   }
 }
 

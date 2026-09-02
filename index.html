@@ -763,7 +763,15 @@ window.onload = () => {
     showScreen('setup');
   } else {
     initSb();
-    showScreen('login');
+    // ログイン済み端末はパスワードをスキップ
+    if (localStorage.getItem('ni_autologin') === '1') {
+      showScreen('dashboard');
+      loadCases().then(checkPendingCases);
+      loadSamples().then(checkReminders);
+      loadTasks().then(checkTaskReminders);
+    } else {
+      showScreen('login');
+    }
   }
 };
 
@@ -799,6 +807,7 @@ function saveSetup() {
 ====================================================== */
 function login() {
   if ($v('l-pw') === cfg.pw) {
+    localStorage.setItem('ni_autologin', '1');
     showScreen('dashboard');
     loadCases().then(checkPendingCases);
     loadSamples().then(checkReminders);
@@ -812,6 +821,7 @@ function login() {
 
 function logout() {
   if (!confirm('ログアウトしますか？')) return;
+  localStorage.removeItem('ni_autologin');
   showScreen('login');
   document.getElementById('l-pw').value = '';
 }

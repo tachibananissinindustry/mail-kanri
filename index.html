@@ -267,6 +267,7 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
     <!-- モード切替 -->
     <div class="mode-toggle">
       <button class="mode-btn active" id="mode-mail" onclick="switchMode('mail')">📧 メール管理</button>
+      <button class="mode-btn" id="mode-project" onclick="switchMode('project')">🗂 進行中案件</button>
       <button class="mode-btn" id="mode-sample" onclick="switchMode('sample')">🧪 サンプル管理</button>
       <button class="mode-btn" id="mode-task" onclick="switchMode('task')">📋 タスク管理</button>
     </div>
@@ -279,6 +280,16 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
       <button class="fbtn" onclick="setFilter('【先方】返信待ち',this)">🔵 【先方】返信待ち</button>
       <button class="fbtn" onclick="setFilter('【先方】確認中',this)">🟣 【先方】確認中</button>
       <button class="fbtn" onclick="setFilter('完了',this)">✅ 完了</button>
+    </div>
+    <!-- 進行中案件フィルター -->
+    <div class="filter-bar" id="project-filter-bar" style="display:none;">
+      <button class="fbtn active" onclick="setProjectFilter('all',this)">すべて</button>
+      <button class="fbtn" onclick="setProjectFilter('【自社】要返信',this)">🔴 【自社】要返信</button>
+      <button class="fbtn" onclick="setProjectFilter('【自社】保留・検討中',this)">🟠 【自社】保留・検討中</button>
+      <button class="fbtn" onclick="setProjectFilter('【先方】返信待ち',this)">🔵 【先方】返信待ち</button>
+      <button class="fbtn" onclick="setProjectFilter('【先方】確認中',this)">🟣 【先方】確認中</button>
+      <button class="fbtn" onclick="setProjectFilter('【進捗待ち】',this)">⏳ 【進捗待ち】</button>
+      <button class="fbtn" onclick="setProjectFilter('完了',this)">✅ 完了</button>
     </div>
     <!-- タスクフィルター -->
     <div class="filter-bar" id="task-filter-bar" style="display:none;">
@@ -303,6 +314,17 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
     <div class="case-grid" id="case-grid"></div>
     <div class="empty" id="empty-state" style="display:none;">
       <div class="empty-icon">📭</div>
+      <p>該当する案件がありません</p>
+      <p style="font-size:12px;margin-top:6px;">右下の「＋」ボタンから新規案件を登録できます</p>
+    </div>
+  </div>
+
+  <!-- 進行中案件ビュー -->
+  <div class="dash-body" id="project-view" style="display:none;">
+    <div class="case-count" id="project-count"></div>
+    <div class="case-grid" id="project-grid"></div>
+    <div class="empty" id="project-empty" style="display:none;">
+      <div class="empty-icon">🗂</div>
       <p>該当する案件がありません</p>
       <p style="font-size:12px;margin-top:6px;">右下の「＋」ボタンから新規案件を登録できます</p>
     </div>
@@ -447,7 +469,7 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
 <div class="overlay" id="overlay-new">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">新規案件を登録</div>
+      <div class="modal-title" id="new-modal-title">新規案件を登録</div>
       <button class="modal-close" onclick="closeNew()">✕</button>
     </div>
     <div class="modal-body" style="max-height:none;">
@@ -696,12 +718,23 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
 /* ======================================================
    定数・ステータス定義
 ====================================================== */
-const STATUSES = [
+const MAIL_STATUSES = [
   '【自社】要返信',
   '【自社】保留・検討中',
   '【自社】返信不要（保留）',
   '【先方】返信待ち',
   '【先方】確認中',
+  '完了'
+];
+// 後方互換のためエイリアスを維持
+const STATUSES = MAIL_STATUSES;
+
+const PROJECT_STATUSES = [
+  '【自社】要返信',
+  '【自社】保留・検討中',
+  '【先方】返信待ち',
+  '【先方】確認中',
+  '【進捗待ち】',
   '完了'
 ];
 
@@ -711,8 +744,13 @@ const ST = {
   '【自社】返信不要（保留）':{bg:'#78716c',light:'#fafaf9',border:'#d6d3d1',icon:'⏸️'},
   '【先方】返信待ち':       {bg:'#2563eb',light:'#eff6ff',border:'#93c5fd',icon:'🔵'},
   '【先方】確認中':         {bg:'#7c3aed',light:'#f5f3ff',border:'#c4b5fd',icon:'🟣'},
+  '【進捗待ち】':           {bg:'#0891b2',light:'#ecfeff',border:'#67e8f9',icon:'⏳'},
   '完了':                  {bg:'#6b7280',light:'#f9fafb',border:'#d1d5db',icon:'✅'}
 };
+
+function getCaseStatuses(c) {
+  return state.detailMode === 'project' ? PROJECT_STATUSES : MAIL_STATUSES;
+}
 
 /* ======================================================
    状態
@@ -722,7 +760,8 @@ let cfg = {};
 let state = {
   cases:[], selectedCase:null, histories:[],
   filter:'all', query:'', who:'秘書', mailDirection:'受信',
-  mode:'mail',
+  mode:'mail', detailMode:'mail',
+  projects:[], projectFilter:'all', projectQuery:'',
   samples:[], selectedSample:null,
   sampleFilter:'all', sampleQuery:'',
   tasks:[], selectedTask:null,
@@ -767,6 +806,7 @@ window.onload = () => {
     if (localStorage.getItem('ni_autologin') === '1') {
       showScreen('dashboard');
       loadCases().then(checkPendingCases);
+      loadProjects();
       loadSamples().then(checkReminders);
       loadTasks().then(checkTaskReminders);
     } else {
@@ -810,6 +850,7 @@ function login() {
     localStorage.setItem('ni_autologin', '1');
     showScreen('dashboard');
     loadCases().then(checkPendingCases);
+    loadProjects();
     loadSamples().then(checkReminders);
     loadTasks().then(checkTaskReminders);
   } else {
@@ -846,9 +887,116 @@ async function loadCases() {
   } catch(e) { toast('案件の読み込みに失敗しました: ' + e.message, true); }
 }
 
+/* ======================================================
+   進行中案件一覧
+====================================================== */
+async function loadProjects() {
+  try {
+    const {data,error} = await sb.from('projects').select('*').order('last_action_at',{ascending:false});
+    if (error) throw error;
+    state.projects = data || [];
+    if (state.mode === 'project') renderProjects();
+  } catch(e) { toast('進行中案件の読み込みに失敗しました: ' + e.message, true); }
+}
+
+function renderProjects() {
+  const q  = state.projectQuery.toLowerCase();
+  const sf = state.projectFilter;
+  const filtered = state.projects.filter(c => {
+    const okStatus = sf === 'all' || c.status === sf;
+    const okSearch = !q || [c.company_name,c.contact_name,c.subject].some(v=>(v||'').toLowerCase().includes(q));
+    return okStatus && okSearch;
+  });
+
+  $id('project-count').textContent = `${filtered.length}件表示中（全${state.projects.length}件）`;
+  const grid  = $id('project-grid');
+  const empty = $id('project-empty');
+
+  if (!filtered.length) { grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+
+  /* ---- すべて → カンバン ---- */
+  if (sf === 'all') {
+    grid.innerHTML = `<div class="kanban">${
+      PROJECT_STATUSES.map(st => {
+        const s    = ST[st];
+        const cols = filtered.filter(c => c.status === st);
+        const cards = cols.map(c => {
+          const dt  = c.last_action_at ? new Date(c.last_action_at).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'}) : '';
+          const sum = c.latest_summary ? c.latest_summary.slice(0,80)+(c.latest_summary.length>80?'…':'') : '（要約なし）';
+          const opacity = st === '完了' ? 'opacity:.65;' : '';
+          return `
+          <div class="kb-card" style="${opacity}" onclick="openProjectDetail('${c.id}')">
+            <div class="kb-company">${esc(c.company_name)}</div>
+            ${c.contact_name?`<div class="kb-contact">${esc(c.contact_name)}</div>`:'<div class="kb-contact" style="color:transparent;">—</div>'}
+            <div class="kb-subject">📋 ${esc(c.subject)}</div>
+            <div class="kb-summary">${esc(sum)}</div>
+            <div class="kb-footer"><span class="kb-date">${dt}</span><span style="font-size:10px;color:#94a3b8;">詳細 →</span></div>
+          </div>`;
+        }).join('');
+        return `
+        <div class="kb-col">
+          <div class="kb-head" style="color:${s.bg};">${s.icon} ${esc(st)} <span class="kb-count">${cols.length}</span></div>
+          ${cards || '<div style="font-size:12px;color:#94a3b8;text-align:center;padding:16px 0;">なし</div>'}
+        </div>`;
+      }).join('')
+    }</div>`;
+    return;
+  }
+
+  /* ---- 各ステータス → 2列グリッド ---- */
+  grid.innerHTML = `<div class="grid-2">${
+    filtered.map(c => {
+      const s  = ST[c.status] || ST['完了'];
+      const dt = c.last_action_at ? new Date(c.last_action_at).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'}) : '';
+      const sum = c.latest_summary ? c.latest_summary.slice(0,100)+(c.latest_summary.length>100?'…':'') : '（要約なし）';
+      const opacity = c.status === '完了' ? 'opacity:.7;' : '';
+      return `
+      <div class="card" style="${opacity}" onclick="openProjectDetail('${c.id}')">
+        <div class="card-head">
+          <div>
+            <div class="company">${esc(c.company_name)}</div>
+            ${c.contact_name?`<div class="contact-name">${esc(c.contact_name)}</div>`:''}
+          </div>
+          <span class="badge" style="background:${s.light};color:${s.bg};border-color:${s.border};">${s.icon} ${esc(c.status)}</span>
+        </div>
+        <div class="subject">📋 ${esc(c.subject)}</div>
+        <div class="summary-preview">${esc(sum)}</div>
+        <div class="card-bottom">
+          <span class="card-date">最終アクション: ${dt}</span>
+          <span style="font-size:11px;color:#94a3b8;">詳細 →</span>
+        </div>
+      </div>`;
+    }).join('')
+  }</div>`;
+}
+
+async function openProjectDetail(id) {
+  state.detailMode = 'project';
+  state.selectedCase = state.projects.find(c => c.id === id);
+  if (!state.selectedCase) return;
+  const c = state.selectedCase;
+
+  $id('d-company').textContent      = c.company_name;
+  $id('d-contact-disp').textContent = c.contact_name ? '担当: ' + c.contact_name : '';
+  $val('d-company-in', c.company_name  || '');
+  $val('d-contact-in', c.contact_name  || '');
+  $val('d-subject-in', c.subject        || '');
+  $val('d-memo-in',    c.memo            || '');
+  $val('email-in',     '');
+  selectDirection('受信');
+  // 進行中案件では「返信不要（保留）」セクションを非表示
+  const sec = $id('pending-until-section');
+  if (sec) sec.style.display = 'none';
+  renderStatusGrid(c.status);
+  $id('overlay-detail').classList.add('open');
+  await loadHistories(id);
+}
+
 function renderCases() {
   const q  = state.query.toLowerCase();
   const sf = state.filter;
+
   const filtered = state.cases.filter(c => {
     const okStatus = sf === 'all' || c.status === sf;
     const okSearch = !q || [c.company_name,c.contact_name,c.subject].some(v=>(v||'').toLowerCase().includes(q));
@@ -865,7 +1013,7 @@ function renderCases() {
   /* ---- すべて → カンバン ---- */
   if (sf === 'all') {
     grid.innerHTML = `<div class="kanban">${
-      STATUSES.map(st => {
+      MAIL_STATUSES.map(st => {
         const s    = ST[st];
         const cols = filtered.filter(c => c.status === st);
         const cards = cols.map(c => {
@@ -919,23 +1067,31 @@ function renderCases() {
 }
 
 function onSearch() {
-  if (state.mode === 'mail')        { state.query       = $id('search-input').value; renderCases(); }
-  else if (state.mode === 'sample') { state.sampleQuery = $id('search-input').value; renderSamples(); }
-  else                              { state.taskQuery   = $id('search-input').value; renderTasks(); }
+  if (state.mode === 'mail')        { state.query         = $id('search-input').value; renderCases(); }
+  else if (state.mode === 'project'){ state.projectQuery  = $id('search-input').value; renderProjects(); }
+  else if (state.mode === 'sample') { state.sampleQuery   = $id('search-input').value; renderSamples(); }
+  else                              { state.taskQuery     = $id('search-input').value; renderTasks(); }
 }
 function filterCases() { onSearch(); }
 
 function setFilter(status, btn) {
   state.filter = status;
-  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#mail-filter-bar .fbtn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderCases();
+}
+function setProjectFilter(status, btn) {
+  state.projectFilter = status;
+  document.querySelectorAll('#project-filter-bar .fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderProjects();
 }
 
 /* ======================================================
    案件詳細
 ====================================================== */
 async function openDetail(id) {
+  state.detailMode = 'mail';
   state.selectedCase = state.cases.find(c => c.id === id);
   if (!state.selectedCase) return;
   const c = state.selectedCase;
@@ -955,7 +1111,8 @@ async function openDetail(id) {
 }
 
 function renderStatusGrid(cur) {
-  $id('status-grid').innerHTML = STATUSES.map(s => {
+  const statuses = getCaseStatuses(state.selectedCase);
+  $id('status-grid').innerHTML = statuses.map(s => {
     const st  = ST[s];
     const sel = s === cur;
     return `<button class="status-opt${sel?' selected':''}"
@@ -967,7 +1124,10 @@ function renderStatusGrid(cur) {
 async function loadHistories(caseId) {
   $id('timeline').innerHTML = '<div style="color:var(--muted);font-size:13px;">読み込み中...</div>';
   try {
-    const {data,error} = await sb.from('histories').select('*').eq('case_id',caseId).order('created_at',{ascending:false});
+    const isProject = state.detailMode === 'project';
+    const table = isProject ? 'project_histories' : 'histories';
+    const col   = isProject ? 'project_id' : 'case_id';
+    const {data,error} = await sb.from(table).select('*').eq(col, caseId).order('created_at',{ascending:false});
     if (error) throw error;
     state.histories = data || [];
     renderTimeline();
@@ -1033,7 +1193,8 @@ function closeDetail() {
 async function deleteHistory(historyId) {
   if (!confirm('この履歴を削除しますか？\nこの操作は取り消せません。')) return;
   try {
-    const {error} = await sb.from('histories').delete().eq('id', historyId);
+    const table = state.detailMode === 'project' ? 'project_histories' : 'histories';
+    const {error} = await sb.from(table).delete().eq('id', historyId);
     if (error) throw error;
     state.histories = state.histories.filter(h => h.id !== historyId);
     renderTimeline();
@@ -1055,14 +1216,21 @@ async function saveCase() {
   };
   if (!upd.company_name||!upd.subject) { toast('取引先名と件名は必須です', true); return; }
   try {
-    const {error} = await sb.from('cases').update(upd).eq('id', state.selectedCase.id);
+    const isProject = state.detailMode === 'project';
+    const table = isProject ? 'projects' : 'cases';
+    const {error} = await sb.from(table).update(upd).eq('id', state.selectedCase.id);
     if (error) throw error;
     Object.assign(state.selectedCase, upd);
-    const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
-    if (idx>=0) Object.assign(state.cases[idx], upd);
+    if (isProject) {
+      const idx = state.projects.findIndex(c=>c.id===state.selectedCase.id);
+      if (idx>=0) Object.assign(state.projects[idx], upd);
+    } else {
+      const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
+      if (idx>=0) Object.assign(state.cases[idx], upd);
+    }
     $id('d-company').textContent = upd.company_name;
     $id('d-contact-disp').textContent = upd.contact_name ? '担当: '+upd.contact_name : '';
-    renderCases();
+    if (isProject) renderProjects(); else renderCases();
     toast('保存しました ✓');
   } catch(e) { toast('保存に失敗しました: ' + e.message, true); }
 }
@@ -1074,10 +1242,17 @@ async function deleteCase() {
   if (!state.selectedCase) return;
   if (!confirm(`「${state.selectedCase.company_name}」の案件を削除しますか？\nこの操作は取り消せません。`)) return;
   try {
-    const {error} = await sb.from('cases').delete().eq('id', state.selectedCase.id);
+    const isProject = state.detailMode === 'project';
+    const table = isProject ? 'projects' : 'cases';
+    const {error} = await sb.from(table).delete().eq('id', state.selectedCase.id);
     if (error) throw error;
-    state.cases = state.cases.filter(c=>c.id!==state.selectedCase.id);
-    renderCases();
+    if (isProject) {
+      state.projects = state.projects.filter(c=>c.id!==state.selectedCase.id);
+      renderProjects();
+    } else {
+      state.cases = state.cases.filter(c=>c.id!==state.selectedCase.id);
+      renderCases();
+    }
     closeDetail();
     toast('案件を削除しました');
   } catch(e) { toast('削除に失敗しました: ' + e.message, true); }
@@ -1089,22 +1264,32 @@ async function deleteCase() {
 async function changeStatus(newSt) {
   if (!state.selectedCase || state.selectedCase.status === newSt) return;
   const oldSt = state.selectedCase.status;
+  const isProject = state.detailMode === 'project';
   try {
     const now = new Date().toISOString();
-    const {error:e1} = await sb.from('cases').update({status:newSt,last_action_at:now,updated_at:now}).eq('id',state.selectedCase.id);
+    const table = isProject ? 'projects' : 'cases';
+    const histTable = isProject ? 'project_histories' : 'histories';
+    const histCol   = isProject ? 'project_id' : 'case_id';
+    const {error:e1} = await sb.from(table).update({status:newSt,last_action_at:now,updated_at:now}).eq('id',state.selectedCase.id);
     if (e1) throw e1;
-    await sb.from('histories').insert({
-      case_id:state.selectedCase.id, action_type:'status_changed',
+    await sb.from(histTable).insert({
+      [histCol]:state.selectedCase.id, action_type:'status_changed',
       status_before:oldSt, status_after:newSt, created_by:state.who
     });
     state.selectedCase.status = newSt;
     state.selectedCase.last_action_at = now;
-    const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
-    if (idx>=0){state.cases[idx].status=newSt;state.cases[idx].last_action_at=now;}
+    if (isProject) {
+      const idx = state.projects.findIndex(c=>c.id===state.selectedCase.id);
+      if (idx>=0){state.projects[idx].status=newSt;state.projects[idx].last_action_at=now;}
+      renderProjects();
+    } else {
+      const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
+      if (idx>=0){state.cases[idx].status=newSt;state.cases[idx].last_action_at=now;}
+      renderPendingUntilSection(newSt);
+      renderCases();
+    }
     renderStatusGrid(newSt);
-    renderPendingUntilSection(newSt);
     await loadHistories(state.selectedCase.id);
-    renderCases();
     toast(`ステータスを「${newSt}」に変更しました`);
     const c = state.selectedCase;
     if (newSt.includes('要返信')) {
@@ -1175,22 +1360,31 @@ async function addHistory() {
     const actionType = state.mailDirection === '送信' ? 'mail_sent'
                      : state.mailDirection === '電話' ? 'phone_call'
                      : 'mail_received';
-    const {error:he} = await sb.from('histories').insert({
-      case_id:state.selectedCase.id, action_type:actionType,
+    const isProject = state.detailMode === 'project';
+    const histTable = isProject ? 'project_histories' : 'histories';
+    const histCol   = isProject ? 'project_id' : 'case_id';
+    const dataTable = isProject ? 'projects' : 'cases';
+    const {error:he} = await sb.from(histTable).insert({
+      [histCol]:state.selectedCase.id, action_type:actionType,
       ai_summary:body, created_by:state.who
     });
     if (he) throw he;
 
-    await sb.from('cases').update({latest_summary:body, last_action_at:now, updated_at:now}).eq('id',state.selectedCase.id);
+    await sb.from(dataTable).update({latest_summary:body, last_action_at:now, updated_at:now}).eq('id',state.selectedCase.id);
 
     state.selectedCase.latest_summary = body;
     state.selectedCase.last_action_at = now;
-    const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
-    if (idx>=0){state.cases[idx].latest_summary=body;state.cases[idx].last_action_at=now;}
+    if (isProject) {
+      const idx = state.projects.findIndex(c=>c.id===state.selectedCase.id);
+      if (idx>=0){state.projects[idx].latest_summary=body;state.projects[idx].last_action_at=now;}
+    } else {
+      const idx = state.cases.findIndex(c=>c.id===state.selectedCase.id);
+      if (idx>=0){state.cases[idx].latest_summary=body;state.cases[idx].last_action_at=now;}
+    }
 
     $val('email-in','');
     await loadHistories(state.selectedCase.id);
-    renderCases();
+    if (isProject) renderProjects(); else renderCases();
     toast('履歴に追加しました ✓');
   } catch(e) {
     toast('追加に失敗しました: ' + e.message, true);
@@ -1233,8 +1427,15 @@ function selectDirection(dir) {
    新規案件
 ====================================================== */
 function openNewCase() {
+  const isProject = state.mode === 'project';
   ['n-company','n-contact','n-subject','n-memo'].forEach(id=>$val(id,''));
-  $id('n-status').value = '【自社】要返信';
+  // モードに応じてステータス選択肢を切り替え
+  const statuses = isProject ? PROJECT_STATUSES : MAIL_STATUSES;
+  const sel = $id('n-status');
+  sel.innerHTML = statuses.map(s=>`<option>${s}</option>`).join('');
+  sel.value = '【自社】要返信';
+  // モーダルタイトル
+  $id('new-modal-title').textContent = isProject ? '進行中案件を追加' : '新規案件を追加';
   $id('overlay-new').classList.add('open');
   setTimeout(()=>$id('n-company').focus(),100);
 }
@@ -1244,27 +1445,42 @@ async function createCase() {
   const company = $v('n-company');
   const subject = $v('n-subject');
   if (!company||!subject) { toast('取引先名と件名は必須です', true); return; }
+  const isProject = state.mode === 'project';
   const newCase = {
-    company_name: company,
-    contact_name: $v('n-contact'),
+    company_name:  company,
+    contact_name:  $v('n-contact'),
     subject,
-    status:       $id('n-status').value,
+    status:        $id('n-status').value,
     memo:          $v('n-memo'),
     last_action_at: new Date().toISOString()
   };
   try {
-    const {data,error} = await sb.from('cases').insert(newCase).select().single();
+    const table = isProject ? 'projects' : 'cases';
+    const {data,error} = await sb.from(table).insert(newCase).select().single();
     if (error) throw error;
-    state.cases.unshift(data);
-    renderCases();
-    closeNew();
-    toast('案件を登録しました ✓');
-    notifySlack(
-      `🆕 *新規案件を登録*\n` +
-      `　${data.company_name}／${data.subject}\n` +
-      `　担当者: ${data.contact_name||'未設定'}　ステータス: ${data.status}`
-    );
-    openDetail(data.id);
+    if (isProject) {
+      state.projects.unshift(data);
+      renderProjects();
+      closeNew();
+      toast('登録しました ✓');
+      notifySlack(
+        `🆕 *進行中案件を登録*\n` +
+        `　${data.company_name}／${data.subject}\n` +
+        `　担当者: ${data.contact_name||'未設定'}　ステータス: ${data.status}`
+      );
+      openProjectDetail(data.id);
+    } else {
+      state.cases.unshift(data);
+      renderCases();
+      closeNew();
+      toast('登録しました ✓');
+      notifySlack(
+        `🆕 *新規案件を登録*\n` +
+        `　${data.company_name}／${data.subject}\n` +
+        `　担当者: ${data.contact_name||'未設定'}　ステータス: ${data.status}`
+      );
+      openDetail(data.id);
+    }
   } catch(e) { toast('登録に失敗しました: ' + e.message, true); }
 }
 
@@ -1273,26 +1489,31 @@ async function createCase() {
 ====================================================== */
 function switchMode(mode) {
   state.mode = mode;
-  $id('mode-mail').classList.toggle('active',   mode === 'mail');
-  $id('mode-sample').classList.toggle('active', mode === 'sample');
-  $id('mode-task').classList.toggle('active',   mode === 'task');
-  $id('mail-filter-bar').style.display   = mode === 'mail'   ? '' : 'none';
-  $id('sample-filter-bar').style.display = mode === 'sample' ? '' : 'none';
-  $id('task-filter-bar').style.display   = mode === 'task'   ? '' : 'none';
-  $id('mail-view').style.display         = mode === 'mail'   ? '' : 'none';
-  $id('sample-view').style.display       = mode === 'sample' ? '' : 'none';
-  $id('task-view').style.display         = mode === 'task'   ? '' : 'none';
-  const labels = {mail:'メール返信管理', sample:'サンプル管理', task:'タスク管理'};
+  $id('mode-mail').classList.toggle('active',    mode === 'mail');
+  $id('mode-project').classList.toggle('active', mode === 'project');
+  $id('mode-sample').classList.toggle('active',  mode === 'sample');
+  $id('mode-task').classList.toggle('active',    mode === 'task');
+  $id('mail-filter-bar').style.display    = mode === 'mail'    ? '' : 'none';
+  $id('project-filter-bar').style.display = mode === 'project' ? '' : 'none';
+  $id('sample-filter-bar').style.display  = mode === 'sample'  ? '' : 'none';
+  $id('task-filter-bar').style.display    = mode === 'task'    ? '' : 'none';
+  $id('mail-view').style.display     = mode === 'mail'    ? '' : 'none';
+  $id('project-view').style.display  = mode === 'project' ? '' : 'none';
+  $id('sample-view').style.display   = mode === 'sample'  ? '' : 'none';
+  $id('task-view').style.display     = mode === 'task'    ? '' : 'none';
+  const labels = {mail:'メール返信管理', project:'進行中案件', sample:'サンプル管理', task:'タスク管理'};
   $id('header-mode-label').textContent = labels[mode] || 'メール返信管理';
-  const ph = {mail:'取引先・担当者・件名で検索', sample:'取引先・担当者・内容で検索', task:'タスク名・担当者で検索'};
+  const ph = {mail:'取引先・担当者・件名で検索', project:'取引先・担当者・件名で検索', sample:'取引先・担当者・内容で検索', task:'タスク名・担当者で検索'};
   $id('search-input').placeholder = ph[mode] || '';
   $id('search-input').value = '';
-  if (mode === 'sample') renderSamples();
-  if (mode === 'task')   renderTasks();
+  if (mode === 'mail')    renderCases();
+  if (mode === 'project') renderProjects();
+  if (mode === 'sample')  renderSamples();
+  if (mode === 'task')    renderTasks();
 }
 
 function onFab() {
-  if (state.mode === 'mail')   openNewCase();
+  if (state.mode === 'mail' || state.mode === 'project') openNewCase();
   else if (state.mode === 'sample') openNewSample();
   else openNewTask();
 }

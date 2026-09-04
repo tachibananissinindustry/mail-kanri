@@ -987,8 +987,10 @@ async function openProjectDetail(id) {
   $val('d-memo-in',    c.memo            || '');
   $val('email-in',     '');
   selectDirection('受信');
-  $id('move-to-project-btn').style.display = 'none';
-  $id('move-to-mail-btn').style.display    = '';
+  const mpb2 = $id('move-to-project-btn');
+  mpb2.style.display = 'none'; mpb2.disabled = false; mpb2.textContent = '🗂 進行中案件へ移動';
+  const mmb2 = $id('move-to-mail-btn');
+  mmb2.style.display = ''; mmb2.disabled = false; mmb2.textContent = '📧 メール管理へ移動';
   // 進行中案件では「返信不要（保留）」セクションを非表示
   const sec = $id('pending-until-section');
   if (sec) sec.style.display = 'none';
@@ -1108,8 +1110,10 @@ async function openDetail(id) {
   $val('d-memo-in',    c.memo            || '');
   $val('email-in',     '');
   selectDirection('受信');
-  $id('move-to-project-btn').style.display = '';
-  $id('move-to-mail-btn').style.display    = 'none';
+  const mpb = $id('move-to-project-btn');
+  mpb.style.display = ''; mpb.disabled = false; mpb.textContent = '🗂 進行中案件へ移動';
+  const mmb = $id('move-to-mail-btn');
+  mmb.style.display = 'none'; mmb.disabled = false; mmb.textContent = '📧 メール管理へ移動';
   renderStatusGrid(c.status);
   renderPendingUntilSection(c.status);
   $id('overlay-detail').classList.add('open');

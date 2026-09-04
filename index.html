@@ -391,9 +391,11 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:
             <textarea id="d-memo-in" rows="2" style="resize:vertical;"></textarea>
           </div>
         </div>
-        <div style="display:flex;gap:8px;margin-top:12px;">
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" onclick="saveCase()">💾 保存</button>
           <button class="btn btn-danger btn-sm" onclick="deleteCase()">🗑 削除</button>
+          <button id="move-to-project-btn" class="btn btn-sm" onclick="moveCase()" style="display:none;border-color:#0891b2;color:#0891b2;background:#ecfeff;">🗂 進行中案件へ移動</button>
+          <button id="move-to-mail-btn"    class="btn btn-sm" onclick="moveCase()" style="display:none;border-color:#6366f1;color:#6366f1;background:#eef2ff;">📧 メール管理へ移動</button>
         </div>
       </div>
 
@@ -985,6 +987,8 @@ async function openProjectDetail(id) {
   $val('d-memo-in',    c.memo            || '');
   $val('email-in',     '');
   selectDirection('受信');
+  $id('move-to-project-btn').style.display = 'none';
+  $id('move-to-mail-btn').style.display    = '';
   // 進行中案件では「返信不要（保留）」セクションを非表示
   const sec = $id('pending-until-section');
   if (sec) sec.style.display = 'none';
@@ -1104,6 +1108,8 @@ async function openDetail(id) {
   $val('d-memo-in',    c.memo            || '');
   $val('email-in',     '');
   selectDirection('受信');
+  $id('move-to-project-btn').style.display = '';
+  $id('move-to-mail-btn').style.display    = 'none';
   renderStatusGrid(c.status);
   renderPendingUntilSection(c.status);
   $id('overlay-detail').classList.add('open');
@@ -1256,6 +1262,89 @@ async function deleteCase() {
     closeDetail();
     toast('案件を削除しました');
   } catch(e) { toast('削除に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   案件移動（メール↔進行中案件）
+====================================================== */
+async function moveCase() {
+  if (!state.selectedCase) return;
+  const c = state.selectedCase;
+  const isProject = state.detailMode === 'project';
+  const destLabel = isProject ? 'メール管理' : '進行中案件';
+  if (!confirm(`「${c.company_name}」を${destLabel}へ移動しますか？\nやり取り履歴もすべて移動します。`)) return;
+
+  const btn = isProject ? $id('move-to-mail-btn') : $id('move-to-project-btn');
+  btn.disabled = true;
+  btn.textContent = '移動中...';
+
+  try {
+    // 1. 移動先テーブルに新規登録
+    const newRec = {
+      company_name:   c.company_name,
+      contact_name:   c.contact_name,
+      subject:        c.subject,
+      status:         c.status,
+      memo:           c.memo,
+      latest_summary: c.latest_summary,
+      last_action_at: c.last_action_at,
+      updated_at:     new Date().toISOString()
+    };
+    const destTable = isProject ? 'cases' : 'projects';
+    const {data:newData, error:e1} = await sb.from(destTable).insert(newRec).select().single();
+    if (e1) throw e1;
+
+    // 2. 履歴を移行
+    const srcHistTable  = isProject ? 'project_histories' : 'histories';
+    const destHistTable = isProject ? 'histories' : 'project_histories';
+    const srcCol        = isProject ? 'project_id' : 'case_id';
+    const destCol       = isProject ? 'case_id' : 'project_id';
+
+    const {data:hists, error:e2} = await sb.from(srcHistTable).select('*').eq(srcCol, c.id).order('created_at',{ascending:true});
+    if (e2) throw e2;
+
+    if (hists && hists.length > 0) {
+      const newHists = hists.map(h => ({
+        [destCol]:    newData.id,
+        action_type:  h.action_type,
+        ai_summary:   h.ai_summary,
+        status_before:h.status_before,
+        status_after: h.status_after,
+        created_by:   h.created_by,
+        created_at:   h.created_at
+      }));
+      const {error:e3} = await sb.from(destHistTable).insert(newHists);
+      if (e3) throw e3;
+    }
+
+    // 3. 元テーブルから削除（履歴はCASCADE削除）
+    const srcTable = isProject ? 'projects' : 'cases';
+    const {error:e4} = await sb.from(srcTable).delete().eq('id', c.id);
+    if (e4) throw e4;
+
+    // 4. ローカル状態を更新
+    if (isProject) {
+      state.projects = state.projects.filter(p=>p.id!==c.id);
+      state.cases.unshift(newData);
+    } else {
+      state.cases = state.cases.filter(p=>p.id!==c.id);
+      state.projects.unshift(newData);
+    }
+
+    closeDetail();
+    if (isProject) { renderProjects(); renderCases(); }
+    else           { renderCases(); renderProjects(); }
+    toast(`✅ ${destLabel}へ移動しました`);
+    notifySlack(
+      `🔀 *${destLabel}へ移動*\n` +
+      `　${c.company_name}／${c.subject}\n` +
+      `　担当者: ${c.contact_name||'未設定'}`
+    );
+  } catch(e) {
+    toast('移動に失敗しました: ' + e.message, true);
+    btn.disabled = false;
+    btn.textContent = isProject ? '📧 メール管理へ移動' : '🗂 進行中案件へ移動';
+  }
 }
 
 /* ======================================================

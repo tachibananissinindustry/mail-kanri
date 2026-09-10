@@ -1176,6 +1176,7 @@ function renderTimeline() {
       icon = '📝';
       body = '<div class="tl-change">メモを更新しました</div>';
     }
+    const isEditable = ['mail_received','email_added','mail_sent','phone_call'].includes(h.action_type);
     return `
     <div class="tl-item" id="tl-${h.id}">
       <div class="tl-dot" style="${dotStyle}">${icon}</div>
@@ -1184,9 +1185,12 @@ function renderTimeline() {
           <span class="tl-date">${dt}</span>
           ${dirBadge}
           ${h.created_by?`<span class="tl-who">${esc(h.created_by)}</span>`:''}
-          <button onclick="deleteHistory('${h.id}')" title="この履歴を削除" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:13px;padding:2px 6px;border-radius:4px;line-height:1;transition:color .15s;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">🗑</button>
+          <span style="margin-left:auto;display:flex;gap:4px;">
+            ${isEditable?`<button onclick="editHistory('${h.id}')" title="編集" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:13px;padding:2px 6px;border-radius:4px;line-height:1;transition:color .15s;" onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#cbd5e1'">✏️</button>`:''}
+            <button onclick="deleteHistory('${h.id}')" title="削除" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:13px;padding:2px 6px;border-radius:4px;line-height:1;transition:color .15s;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">🗑</button>
+          </span>
         </div>
-        ${body}
+        <div id="tl-body-${h.id}">${body}</div>
       </div>
     </div>`;
   }).join('');
@@ -1210,6 +1214,56 @@ async function deleteHistory(historyId) {
     renderTimeline();
     toast('履歴を削除しました');
   } catch(e) { toast('削除に失敗しました: ' + e.message, true); }
+}
+
+/* ======================================================
+   履歴編集
+====================================================== */
+function editHistory(historyId) {
+  const h = state.histories.find(h => h.id === historyId);
+  if (!h) return;
+  const wrap = $id(`tl-body-${historyId}`);
+  if (!wrap) return;
+  const current = h.ai_summary || '';
+  wrap.innerHTML = `
+    <textarea id="tl-edit-${historyId}" style="width:100%;padding:8px 10px;border:1.5px solid #2563eb;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;min-height:80px;margin-top:6px;">${esc(current)}</textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <button onclick="saveHistoryEdit('${historyId}')" class="btn btn-primary btn-sm">💾 保存</button>
+      <button onclick="cancelHistoryEdit('${historyId}')" class="btn btn-secondary btn-sm">キャンセル</button>
+    </div>`;
+  const ta = $id(`tl-edit-${historyId}`);
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+function cancelHistoryEdit(historyId) {
+  const h = state.histories.find(h => h.id === historyId);
+  if (!h) return;
+  const wrap = $id(`tl-body-${historyId}`);
+  if (wrap) wrap.innerHTML = `<div class="tl-summary">${esc(h.ai_summary||'')}</div>`;
+}
+
+async function saveHistoryEdit(historyId) {
+  const ta = $id(`tl-edit-${historyId}`);
+  if (!ta) return;
+  const newText = ta.value.trim();
+  if (!newText) { toast('内容を入力してください', true); return; }
+
+  const saveBtn = ta.nextElementSibling?.querySelector('button');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
+
+  try {
+    const table = state.detailMode === 'project' ? 'project_histories' : 'histories';
+    const {error} = await sb.from(table).update({ai_summary: newText}).eq('id', historyId);
+    if (error) throw error;
+    const h = state.histories.find(h => h.id === historyId);
+    if (h) h.ai_summary = newText;
+    const wrap = $id(`tl-body-${historyId}`);
+    if (wrap) wrap.innerHTML = `<div class="tl-summary">${esc(newText)}</div>`;
+    toast('履歴を更新しました ✓');
+  } catch(e) {
+    toast('更新に失敗しました: ' + e.message, true);
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 保存'; }
+  }
 }
 
 /* ======================================================

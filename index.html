@@ -1219,20 +1219,52 @@ async function deleteHistory(historyId) {
 /* ======================================================
    履歴編集
 ====================================================== */
+const DIR_OPTIONS = [
+  { type:'mail_received', label:'📨 受信', active:'border-color:#2563eb;background:#eff6ff;color:#2563eb;' },
+  { type:'mail_sent',     label:'📤 送信', active:'border-color:#16a34a;background:#f0fdf4;color:#16a34a;' },
+  { type:'phone_call',    label:'📞 電話', active:'border-color:#d97706;background:#fffbeb;color:#d97706;' }
+];
+
 function editHistory(historyId) {
   const h = state.histories.find(h => h.id === historyId);
   if (!h) return;
   const wrap = $id(`tl-body-${historyId}`);
   if (!wrap) return;
-  const current = h.ai_summary || '';
+
+  const dirBtns = DIR_OPTIONS.map(d => {
+    const isSel = h.action_type === d.type;
+    return `<button id="dir-opt-${historyId}-${d.type}"
+      onclick="selectHistoryDir('${historyId}','${d.type}')"
+      class="who-btn${isSel?' selected':''}"
+      style="${isSel ? d.active : ''}">${d.label}</button>`;
+  }).join('');
+
   wrap.innerHTML = `
-    <textarea id="tl-edit-${historyId}" style="width:100%;padding:8px 10px;border:1.5px solid #2563eb;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;min-height:80px;margin-top:6px;">${esc(current)}</textarea>
+    <div style="margin-top:8px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:5px;">やり取りの種類</div>
+      <div class="who-row" style="margin-bottom:8px;">${dirBtns}</div>
+    </div>
+    <textarea id="tl-edit-${historyId}" style="width:100%;padding:8px 10px;border:1.5px solid #2563eb;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;min-height:80px;">${esc(h.ai_summary||'')}</textarea>
     <div style="display:flex;gap:6px;margin-top:6px;">
-      <button onclick="saveHistoryEdit('${historyId}')" class="btn btn-primary btn-sm">💾 保存</button>
+      <button onclick="saveHistoryEdit('${historyId}')" class="btn btn-primary btn-sm" id="save-hist-${historyId}">💾 保存</button>
       <button onclick="cancelHistoryEdit('${historyId}')" class="btn btn-secondary btn-sm">キャンセル</button>
     </div>`;
   const ta = $id(`tl-edit-${historyId}`);
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+function selectHistoryDir(historyId, dirType) {
+  DIR_OPTIONS.forEach(d => {
+    const btn = $id(`dir-opt-${historyId}-${d.type}`);
+    if (!btn) return;
+    if (d.type === dirType) {
+      btn.classList.add('selected');
+      btn.style.cssText = d.active;
+    } else {
+      btn.classList.remove('selected');
+      btn.style.cssText = '';
+    }
+  });
 }
 
 function cancelHistoryEdit(historyId) {
@@ -1248,17 +1280,26 @@ async function saveHistoryEdit(historyId) {
   const newText = ta.value.trim();
   if (!newText) { toast('内容を入力してください', true); return; }
 
-  const saveBtn = ta.nextElementSibling?.querySelector('button');
+  // 選択中の種別を取得
+  let newType = null;
+  DIR_OPTIONS.forEach(d => {
+    const btn = $id(`dir-opt-${historyId}-${d.type}`);
+    if (btn && btn.classList.contains('selected')) newType = d.type;
+  });
+
+  const saveBtn = $id(`save-hist-${historyId}`);
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
 
   try {
     const table = state.detailMode === 'project' ? 'project_histories' : 'histories';
-    const {error} = await sb.from(table).update({ai_summary: newText}).eq('id', historyId);
+    const upd = { ai_summary: newText };
+    if (newType) upd.action_type = newType;
+    const {error} = await sb.from(table).update(upd).eq('id', historyId);
     if (error) throw error;
     const h = state.histories.find(h => h.id === historyId);
-    if (h) h.ai_summary = newText;
-    const wrap = $id(`tl-body-${historyId}`);
-    if (wrap) wrap.innerHTML = `<div class="tl-summary">${esc(newText)}</div>`;
+    if (h) { h.ai_summary = newText; if (newType) h.action_type = newType; }
+    // タイムライン全体を再描画して種別バッジも更新
+    renderTimeline();
     toast('履歴を更新しました ✓');
   } catch(e) {
     toast('更新に失敗しました: ' + e.message, true);
